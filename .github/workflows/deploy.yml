@@ -10,6 +10,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: degen0331/user-platform
+  AGENT_IMAGE_NAME: degen0331/agent
 
 jobs:
   build-and-deploy:
@@ -27,42 +28,27 @@ jobs:
         env:
           ED25519_KEY: ${{ secrets.ED25519_KEY }}
 
-      # Step 2: Parse tag for environment and branch
-      - name: Parse tag for environment and branch
-        run: |
-          TAG="${{ github.ref_name }}"
-
-          # Extract environment prefix and set DEPLOY_ENV / DEPLOY_HOST
-          if [[ "$TAG" == dev-v* ]]; then
-            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#dev-v}"
-          elif [[ "$TAG" == test-v* ]]; then
-            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#test-v}"
-          elif [[ "$TAG" == prod-v* ]]; then
-            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#prod-v}"
-          fi
-
-          # REMAINDER is now e.g. "1.0.0" or "1.0.0-feature/login"
-          # Extract optional branch: everything after the first "-" in REMAINDER
-          if [[ "$REMAINDER" == *-* ]]; then
-            REPO_BRANCH="${REMAINDER#*-}"
-          else
-            REPO_BRANCH=""
-          fi
-          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
-
-      # Step 3: Checkout private repository
+      # Step 2: Checkout private repository
       - name: Checkout private repository
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.REPOSITORY }}
           ssh-key: ${{ secrets.ED25519_KEY }}
-          ref: ${{ env.REPO_BRANCH }}
+
+      # Step 3: Set up environment variables based on tag prefix
+      - name: Set up environment variables
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == dev-v* ]]; then
+            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+          elif [[ "$TAG" == test-v* ]]; then
+            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+          elif [[ "$TAG" == prod-v* ]]; then
+            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+          fi
 
       # Step 4: Set up Docker Buildx
       - name: Set up Docker Buildx
@@ -92,6 +78,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Step 6.5: Build and push Agent Docker image
+      - name: Build and push Agent Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.AGENT_IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.AGENT_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # Step 7: Upload docker-compose.yml and prisma directory to server
       - name: Copy files to server
         uses: appleboy/scp-action@v0.1.7
@@ -115,6 +114,7 @@ jobs:
 
             # Create deployment directory
             mkdir -p ~/cuneim
+            mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
 
             # Write .env file with all secrets
             cat > ~/cuneim/.env << 'ENVEOF'
@@ -138,6 +138,7 @@ jobs:
             CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
             GHCR_IMAGE=degen0331/user-platform
+            GHCR_IMAGE_AGENT=degen0331/agent
             IMAGE_TAG=${{ github.ref_name }}
             DEPLOY_ENV=${{ env.DEPLOY_ENV }}
             TOTP_ENCRYPTION_KEY=${{ secrets.TOTP_ENCRYPTION_KEY }}
@@ -153,7 +154,7 @@ jobs:
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
 
             # Pull latest app image
-            docker compose pull app
+            docker compose pull app agent
 
             # Start/restart all services
             docker compose up -d
