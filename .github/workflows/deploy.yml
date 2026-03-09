@@ -28,27 +28,40 @@ jobs:
         env:
           ED25519_KEY: ${{ secrets.ED25519_KEY }}
 
-      # Step 2: Checkout private repository
+      # Step 2: Parse tag for environment and branch
+      - name: Parse tag for environment and branch
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Extract environment prefix and set DEPLOY_ENV / DEPLOY_HOST
+          if [[ "$TAG" == dev-v* ]]; then
+            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+            REMAINDER="${TAG#dev-v}"
+          elif [[ "$TAG" == test-v* ]]; then
+            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+            REMAINDER="${TAG#test-v}"
+          elif [[ "$TAG" == prod-v* ]]; then
+            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+            REMAINDER="${TAG#prod-v}"
+          fi
+          # REMAINDER is now e.g. "1.0.0" or "1.0.0-feature/login"
+          # Extract optional branch: everything after the first "-" in REMAINDER
+          if [[ "$REMAINDER" == *-* ]]; then
+            REPO_BRANCH="${REMAINDER#*-}"
+          else
+            REPO_BRANCH=""
+          fi
+          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
+
+      # Step 3: Checkout private repository
       - name: Checkout private repository
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.REPOSITORY }}
           ssh-key: ${{ secrets.ED25519_KEY }}
-
-      # Step 3: Set up environment variables based on tag prefix
-      - name: Set up environment variables
-        run: |
-          TAG="${{ github.ref_name }}"
-          if [[ "$TAG" == dev-v* ]]; then
-            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-          elif [[ "$TAG" == test-v* ]]; then
-            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-          elif [[ "$TAG" == prod-v* ]]; then
-            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-          fi
+          ref: ${{ env.REPO_BRANCH }}
 
       # Step 4: Set up Docker Buildx
       - name: Set up Docker Buildx
