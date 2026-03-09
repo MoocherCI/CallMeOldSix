@@ -1,0 +1,16 @@
+# Auto-generated .gitignore
+# Environment variables and secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Logs
+*.log
+
+# Dependencies
+node_modules/
+__pycache__/
+
+# Session metadata (managed by app)
+.cuneim/
