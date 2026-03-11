@@ -312,7 +312,7 @@ jobs:
 
             # Run database migrations (conditional)
             if [ "${{ env.BUILD_APP }}" = "true" ]; then
-              docker compose exec -T app npx prisma migrate deploy
+              docker compose exec -T --user root app npx prisma migrate deploy
             fi
 
             # Run admin database migrations and seed (conditional)
