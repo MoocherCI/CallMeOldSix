@@ -171,11 +171,11 @@ jobs:
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
-            GHCR_IMAGE=degen0331/user-platform
-            GHCR_IMAGE_AGENT=moocherci/agent
+            GHCR_IMAGE=${{ github.repository_owner }}/user-platform
+            GHCR_IMAGE_AGENT=${{ github.repository_owner }}/agent
+            GHCR_IMAGE_ADMIN=${{ github.repository_owner }}/admin
             ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
             ADMIN_JWT_REFRESH_SECRET=${{ secrets.ADMIN_JWT_REFRESH_SECRET }}
-            GHCR_IMAGE_ADMIN=degen0331/admin
             IMAGE_TAG=${{ github.ref_name }}
             DEPLOY_ENV=${{ env.DEPLOY_ENV }}
             TOTP_ENCRYPTION_KEY=${{ secrets.TOTP_ENCRYPTION_KEY }}
