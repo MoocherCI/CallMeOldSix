@@ -16,6 +16,9 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    outputs:
+      services_display: ${{ env.SERVICES_DISPLAY }}
+      deploy_status: ${{ job.status }}
     permissions:
       contents: read
       packages: write
@@ -29,8 +32,8 @@ jobs:
         env:
           ED25519_KEY: ${{ secrets.ED25519_KEY }}
 
-      # Step 2: Parse tag for environment and branch
-      - name: Parse tag for environment and branch
+      # Step 2: Parse tag for environment, branch, and services
+      - name: Parse tag for environment, branch, and services
         run: |
           TAG="${{ github.ref_name }}"
           # Extract environment prefix and set DEPLOY_ENV / DEPLOY_HOST
@@ -47,14 +50,55 @@ jobs:
             echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
             REMAINDER="${TAG#prod-v}"
           fi
-          # REMAINDER is now e.g. "1.0.0" or "1.0.0-feature/login"
-          # Extract optional branch: everything after the first "-" in REMAINDER
-          if [[ "$REMAINDER" == *-* ]]; then
-            REPO_BRANCH="${REMAINDER#*-}"
+
+          # REMAINDER is now e.g. "1.0.0", "1.0.0+app.agent", "1.0.0+app-feature/login"
+          BUILD_APP="false"
+          BUILD_AGENT="false"
+          BUILD_ADMIN="false"
+          REPO_BRANCH=""
+
+          if [[ "$REMAINDER" == *+* ]]; then
+            # Has service selector: split on first "+"
+            VERSION_PART="${REMAINDER%%+*}"
+            SERVICES_AND_BRANCH="${REMAINDER#*+}"
+
+            # Branch is everything after the first "-" in SERVICES_AND_BRANCH
+            if [[ "$SERVICES_AND_BRANCH" == *-* ]]; then
+              SERVICES_PART="${SERVICES_AND_BRANCH%%-*}"
+              REPO_BRANCH="${SERVICES_AND_BRANCH#*-}"
+            else
+              SERVICES_PART="$SERVICES_AND_BRANCH"
+            fi
+
+            # Parse services by splitting on "."
+            IFS='.' read -ra SVC_ARRAY <<< "$SERVICES_PART"
+            DISPLAY_PARTS=()
+            for svc in "${SVC_ARRAY[@]}"; do
+              case "$svc" in
+                app)   BUILD_APP="true";   DISPLAY_PARTS+=("app") ;;
+                agent) BUILD_AGENT="true"; DISPLAY_PARTS+=("agent") ;;
+                admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
+              esac
+            done
+            SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
           else
-            REPO_BRANCH=""
+            # No service selector: build all (backward compatible)
+            BUILD_APP="true"
+            BUILD_AGENT="true"
+            BUILD_ADMIN="true"
+            SERVICES_DISPLAY="app, agent, admin"
+
+            # Branch: everything after the first "-" in REMAINDER
+            if [[ "$REMAINDER" == *-* ]]; then
+              REPO_BRANCH="${REMAINDER#*-}"
+            fi
           fi
+
           echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
+          echo "BUILD_APP=${BUILD_APP}" >> $GITHUB_ENV
+          echo "BUILD_AGENT=${BUILD_AGENT}" >> $GITHUB_ENV
+          echo "BUILD_ADMIN=${BUILD_ADMIN}" >> $GITHUB_ENV
+          echo "SERVICES_DISPLAY=${SERVICES_DISPLAY}" >> $GITHUB_ENV
 
       # Step 3: Checkout private repository
       - name: Checkout private repository
@@ -78,13 +122,19 @@ jobs:
 
       # Step 5.5: Generate Prisma schemas from shared models
       - name: Generate Prisma schemas
+        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
         run: |
           chmod +x prisma-shared/build-schema.sh
-          bash prisma-shared/build-schema.sh user-platform/prisma/base.prisma user-platform/prisma/schema.prisma
-          bash prisma-shared/build-schema.sh admin-platform/api/prisma/base.prisma admin-platform/api/prisma/schema.prisma
+          if [ "${{ env.BUILD_APP }}" = "true" ]; then
+            bash prisma-shared/build-schema.sh user-platform/prisma/base.prisma user-platform/prisma/schema.prisma
+          fi
+          if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
+            bash prisma-shared/build-schema.sh admin-platform/api/prisma/base.prisma admin-platform/api/prisma/schema.prisma
+          fi
 
       # Step 6: Build and push Docker image
       - name: Build and push Docker image
+        if: env.BUILD_APP == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./user-platform
@@ -101,6 +151,7 @@ jobs:
 
       # Step 6.5: Build and push Agent Docker image
       - name: Build and push Agent Docker image
+        if: env.BUILD_AGENT == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./agent
@@ -114,6 +165,7 @@ jobs:
 
       # Step 6.6: Build and push Admin Docker image
       - name: Build and push Admin Docker image
+        if: env.BUILD_ADMIN == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./admin-platform
@@ -125,14 +177,47 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Step 7: Upload docker-compose.yml and prisma directory to server
-      - name: Copy files to server
+      # Step 7: Upload files to server
+      - name: Copy global files to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "user-platform/docker-compose.yml,user-platform/prisma/,admin-platform/api/prisma/,user-platform/nginx/"
+          source: "user-platform/docker-compose.yml"
+          target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy app prisma files to server
+        if: env.BUILD_APP == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "user-platform/prisma/"
+          target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy admin prisma files to server
+        if: env.BUILD_ADMIN == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "admin-platform/api/prisma/"
+          target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy nginx files to server
+        if: env.BUILD_ADMIN == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "user-platform/nginx/"
           target: "~/cuneim/"
           strip_components: 1
 
@@ -171,9 +256,9 @@ jobs:
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
-            GHCR_IMAGE=${{ github.repository_owner }}/user-platform
-            GHCR_IMAGE_AGENT=${{ github.repository_owner }}/agent
-            GHCR_IMAGE_ADMIN=${{ github.repository_owner }}/admin
+            GHCR_IMAGE=${{ env.IMAGE_NAME }}
+            GHCR_IMAGE_AGENT=${{ env.AGENT_IMAGE_NAME }}
+            GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
             ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
             ADMIN_JWT_REFRESH_SECRET=${{ secrets.ADMIN_JWT_REFRESH_SECRET }}
             IMAGE_TAG=${{ github.ref_name }}
@@ -191,25 +276,37 @@ jobs:
             # Login to GHCR to pull private images
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
 
-            # Pull latest app image
-            docker compose pull app agent admin
+            # Pull images for selected services
+            PULL_SERVICES=""
+            if [ "${{ env.BUILD_APP }}" = "true" ]; then PULL_SERVICES="$PULL_SERVICES app"; fi
+            if [ "${{ env.BUILD_AGENT }}" = "true" ]; then PULL_SERVICES="$PULL_SERVICES agent"; fi
+            if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then PULL_SERVICES="$PULL_SERVICES admin"; fi
+            if [ -n "$PULL_SERVICES" ]; then
+              docker compose pull $PULL_SERVICES
+            fi
 
             # Start/restart all services
             docker compose up -d
 
-            # Run database migrations
-            docker compose exec -T app npx prisma migrate deploy
+            # Run database migrations (conditional)
+            if [ "${{ env.BUILD_APP }}" = "true" ]; then
+              docker compose exec -T app npx prisma migrate deploy
+            fi
 
-            # Run admin database migrations and seed
-            docker compose exec -T admin npx prisma migrate deploy
-            docker compose exec -T admin npx prisma db seed
+            # Run admin database migrations and seed (conditional)
+            if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
+              docker compose exec -T admin npx prisma migrate deploy
+              docker compose exec -T admin npx prisma db seed
+            fi
 
-            # Deploy admin nginx config
-            sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/sites-available/admin.cuneim.com.conf
-            sudo ln -sf /etc/nginx/sites-available/admin.cuneim.com.conf /etc/nginx/sites-enabled/admin.cuneim.com.conf
-            sudo nginx -t && sudo systemctl reload nginx
+            # Deploy admin nginx config (conditional)
+            if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
+              sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/sites-available/admin.cuneim.com.conf
+              sudo ln -sf /etc/nginx/sites-available/admin.cuneim.com.conf /etc/nginx/sites-enabled/admin.cuneim.com.conf
+              sudo nginx -t && sudo systemctl reload nginx
+            fi
   notify:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     needs: build-and-deploy
     steps:
@@ -217,7 +314,8 @@ jobs:
         uses: actions/checkout@v4
       - name: 🔔 推送到 Lark
         env:
-          STATUS: ${{ needs.deploy.outputs.status }}
+          STATUS: ${{ needs.build-and-deploy.result }}
+          SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
           ACTOR: ${{ github.actor }}
           TAG: ${{ github.ref }}
           COMMIT_SHA: ${{ github.sha }}
@@ -250,7 +348,7 @@ jobs:
                       "tag": "div",
                       "text": {
                         "tag": "lark_md",
-                        "content": "**发起人**: ${ACTOR}\n**Tag**: ${TAG_NAME}\n**状态**: ${STATUS_TEXT}\n**提交信息**: ${COMMIT_MESSAGE}\n**提交时间**: ${COMMIT_TIME}\n[查看提交](${COMMIT_URL})"
+                        "content": "**发起人**: ${ACTOR}\n**Tag**: ${TAG_NAME}\n**构建服务**: ${SERVICES}\n**状态**: ${STATUS_TEXT}\n**提交信息**: ${COMMIT_MESSAGE}\n**提交时间**: ${COMMIT_TIME}\n[查看提交](${COMMIT_URL})"
                       }
                     },
                     {
