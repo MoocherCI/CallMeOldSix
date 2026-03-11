@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: degen0331/user-platform
   AGENT_IMAGE_NAME: moocherci/agent
+  ADMIN_IMAGE_NAME: moocherci/admin
 
 jobs:
   build-and-deploy:
@@ -75,6 +76,13 @@ jobs:
           username: ${{ secrets.GHCR_USERNAME }}
           password: ${{ secrets.GHCR_PAT }}
 
+      # Step 5.5: Generate Prisma schemas from shared models
+      - name: Generate Prisma schemas
+        run: |
+          chmod +x prisma-shared/build-schema.sh
+          bash prisma-shared/build-schema.sh user-platform/prisma/base.prisma user-platform/prisma/schema.prisma
+          bash prisma-shared/build-schema.sh admin-platform/api/prisma/base.prisma admin-platform/api/prisma/schema.prisma
+
       # Step 6: Build and push Docker image
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -104,6 +112,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Step 6.6: Build and push Admin Docker image
+      - name: Build and push Admin Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./admin-platform
+          file: ./admin-platform/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.ADMIN_IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.ADMIN_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # Step 7: Upload docker-compose.yml and prisma directory to server
       - name: Copy files to server
         uses: appleboy/scp-action@v0.1.7
@@ -111,7 +132,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "user-platform/docker-compose.yml,user-platform/prisma/"
+          source: "user-platform/docker-compose.yml,user-platform/prisma/,admin-platform/api/prisma/,user-platform/nginx/"
           target: "~/cuneim/"
           strip_components: 1
 
@@ -152,6 +173,9 @@ jobs:
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
             GHCR_IMAGE=degen0331/user-platform
             GHCR_IMAGE_AGENT=moocherci/agent
+            ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
+            ADMIN_JWT_REFRESH_SECRET=${{ secrets.ADMIN_JWT_REFRESH_SECRET }}
+            GHCR_IMAGE_ADMIN=degen0331/admin
             IMAGE_TAG=${{ github.ref_name }}
             DEPLOY_ENV=${{ env.DEPLOY_ENV }}
             TOTP_ENCRYPTION_KEY=${{ secrets.TOTP_ENCRYPTION_KEY }}
@@ -168,13 +192,22 @@ jobs:
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
 
             # Pull latest app image
-            docker compose pull app agent
+            docker compose pull app agent admin
 
             # Start/restart all services
             docker compose up -d
 
             # Run database migrations
             docker compose exec -T app npx prisma migrate deploy
+
+            # Run admin database migrations and seed
+            docker compose exec -T admin npx prisma migrate deploy
+            docker compose exec -T admin npx prisma db seed
+
+            # Deploy admin nginx config
+            sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/sites-available/admin.cuneim.com.conf
+            sudo ln -sf /etc/nginx/sites-available/admin.cuneim.com.conf /etc/nginx/sites-enabled/admin.cuneim.com.conf
+            sudo nginx -t && sudo systemctl reload nginx
   notify:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
