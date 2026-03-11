@@ -3,9 +3,9 @@ name: 'Deploy User Platform'
 on:
   push:
     tags:
-      - 'dev-v*'
-      - 'test-v*'
-      - 'prod-v*'
+      - 'dev-v**'
+      - 'test-v**'
+      - 'prod-v**'
 
 env:
   REGISTRY: ghcr.io
