@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: degen0331/user-platform
+  IMAGE_NAME: moocherci/user-platform
   AGENT_IMAGE_NAME: moocherci/agent
   ADMIN_IMAGE_NAME: moocherci/admin
 
