@@ -239,6 +239,14 @@ jobs:
             mkdir -p ~/cuneim
             mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
 
+            # Read old per-service image tags from existing .env (fallback to 'latest')
+            OLD_APP_TAG=$(grep '^APP_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || echo "latest")
+            OLD_AGENT_TAG=$(grep '^AGENT_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || echo "latest")
+            OLD_ADMIN_TAG=$(grep '^ADMIN_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || echo "latest")
+            [ -z "$OLD_APP_TAG" ] && OLD_APP_TAG="latest"
+            [ -z "$OLD_AGENT_TAG" ] && OLD_AGENT_TAG="latest"
+            [ -z "$OLD_ADMIN_TAG" ] && OLD_ADMIN_TAG="latest"
+
             # Write .env file with all secrets
             cat > ~/cuneim/.env << 'ENVEOF'
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
@@ -265,7 +273,6 @@ jobs:
             GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
             ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
             ADMIN_JWT_REFRESH_SECRET=${{ secrets.ADMIN_JWT_REFRESH_SECRET }}
-            IMAGE_TAG=${{ env.IMAGE_TAG }}
             DEPLOY_ENV=${{ env.DEPLOY_ENV }}
             TOTP_ENCRYPTION_KEY=${{ secrets.TOTP_ENCRYPTION_KEY }}
             INTERNAL_BASE_URL=${{ secrets.INTERNAL_BASE_URL }}
@@ -274,6 +281,11 @@ jobs:
 
             # Remove leading whitespace from .env lines
             sed -i 's/^[[:space:]]*//' ~/cuneim/.env
+
+            # Append per-service image tags (new tag for built services, old tag for unbuilt)
+            if [ "${{ env.BUILD_APP }}" = "true" ]; then echo "APP_IMAGE_TAG=${{ env.IMAGE_TAG }}" >> ~/cuneim/.env; else echo "APP_IMAGE_TAG=$OLD_APP_TAG" >> ~/cuneim/.env; fi
+            if [ "${{ env.BUILD_AGENT }}" = "true" ]; then echo "AGENT_IMAGE_TAG=${{ env.IMAGE_TAG }}" >> ~/cuneim/.env; else echo "AGENT_IMAGE_TAG=$OLD_AGENT_TAG" >> ~/cuneim/.env; fi
+            if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then echo "ADMIN_IMAGE_TAG=${{ env.IMAGE_TAG }}" >> ~/cuneim/.env; else echo "ADMIN_IMAGE_TAG=$OLD_ADMIN_TAG" >> ~/cuneim/.env; fi
 
             cd ~/cuneim
 
@@ -289,8 +301,14 @@ jobs:
               docker compose pull $PULL_SERVICES
             fi
 
-            # Start/restart all services
-            docker compose up -d
+            # Start/restart selected services only
+            UP_SERVICES=""
+            if [ "${{ env.BUILD_APP }}" = "true" ]; then UP_SERVICES="$UP_SERVICES app"; fi
+            if [ "${{ env.BUILD_AGENT }}" = "true" ]; then UP_SERVICES="$UP_SERVICES agent"; fi
+            if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then UP_SERVICES="$UP_SERVICES admin"; fi
+            if [ -n "$UP_SERVICES" ]; then
+              docker compose up -d $UP_SERVICES
+            fi
 
             # Run database migrations (conditional)
             if [ "${{ env.BUILD_APP }}" = "true" ]; then
