@@ -318,7 +318,7 @@ jobs:
             # Run admin database migrations and seed (conditional)
             if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
               docker compose exec -T admin npx prisma migrate deploy
-              docker compose exec -T admin npx prisma db seed
+              docker compose exec -T admin node prisma/seed.js
             fi
 
             # Deploy admin nginx config (conditional)
