@@ -1,0 +1,4 @@
+name = "deploy-bot"
+account_id = "1b4bf99dd6273e7e5ad4ea308b23484a"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
