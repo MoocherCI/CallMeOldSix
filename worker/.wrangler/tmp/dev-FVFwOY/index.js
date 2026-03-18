@@ -194,7 +194,7 @@ async function handleNotify(request, env) {
 }
 __name(handleNotify, "handleNotify");
 async function getLarkToken(env) {
-  const response = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal/", {
+  const response = await fetch("https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -210,7 +210,7 @@ async function getLarkToken(env) {
 }
 __name(getLarkToken, "getLarkToken");
 async function sendLarkMessage(token, chatId, card) {
-  const response = await fetch("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id", {
+  const response = await fetch("https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
