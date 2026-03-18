@@ -80,7 +80,8 @@ jobs:
             REPO_BRANCH="${{ inputs.branch }}"
             SERVICES_INPUT="${{ inputs.services }}"
 
-            # Auto-generate version if empty
+            # Auto-generate version if empty (handle empty string from API dispatch)
+            VERSION=$(echo "$VERSION" | xargs)
             if [ -z "$VERSION" ]; then
               VERSION=$(date -u +'%Y%m%d%H%M%S')
             fi
