@@ -3,288 +3,385 @@ const GITHUB_WORKFLOW = 'deploy.yml';
 const ENVIRONMENT_OPTIONS = ['dev', 'test', 'prod'];
 const SERVICE_OPTIONS = ['all', 'app', 'agent', 'admin', 'app+agent', 'app+admin', 'agent+admin'];
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === 'OPTIONS' && url.pathname === '/deploy') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    if (request.method === 'POST' && url.pathname === '/event') {
+      return handleEvent(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/callback') {
+      return handleCallback(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/notify') {
+      return handleNotify(request, env);
     }
 
     if (request.method === 'GET' && url.pathname === '/') {
-      return new Response(getDeployPage(), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS },
-      });
-    }
-
-    if (request.method === 'POST' && url.pathname === '/deploy') {
-      return handleDeploy(request, env);
+      return Response.json({ status: 'ok', service: 'deploy-bot' });
     }
 
     return new Response('Not Found', { status: 404 });
   },
 };
 
-async function handleDeploy(request, env) {
+// ─── Lark Event Subscription ───────────────────────────────────────────────────
+
+async function handleEvent(request, env) {
   try {
     const body = await request.json();
-    const { environment, services = 'all', version = '', branch = '' } = body;
 
-    if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
-      return Response.json(
-        { success: false, message: `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}` },
-        { status: 400, headers: CORS_HEADERS }
-      );
+    // Lark challenge verification
+    if (body.type === 'url_verification') {
+      return Response.json({ challenge: body.challenge });
     }
 
-    if (!SERVICE_OPTIONS.includes(services)) {
-      return Response.json(
-        { success: false, message: `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}` },
-        { status: 400, headers: CORS_HEADERS }
-      );
+    // Verify token
+    if (!body.header || body.header.token !== env.LARK_VERIFICATION_TOKEN) {
+      return Response.json({ error: 'invalid token' }, { status: 401 });
     }
 
-    const githubResponse = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `token ${env.GITHUB_TOKEN}`,
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'deploy-bot',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ref: 'main',
-          inputs: { environment, version, services, branch },
-        }),
+    // Handle message events
+    if (body.header.event_type === 'im.message.receive_v1') {
+      const message = body.event?.message;
+      if (message) {
+        try {
+          const content = JSON.parse(message.content);
+          const text = (content.text || '').trim().toLowerCase();
+          if (text.includes('/deploy')) {
+            const token = await getLarkToken(env);
+            const chatId = message.chat_id;
+            await sendLarkMessage(token, chatId, buildDeployCard());
+          }
+        } catch (e) {
+          // Ignore parse errors for non-text messages
+        }
       }
-    );
-
-    if (githubResponse.status === 204) {
-      return Response.json(
-        { success: true, message: '已触发部署', params: { environment, services, version, branch } },
-        { headers: CORS_HEADERS }
-      );
     }
 
-    const errorText = await githubResponse.text();
-    return Response.json(
-      { success: false, message: `GitHub API 返回 ${githubResponse.status}: ${errorText}` },
-      { status: 502, headers: CORS_HEADERS }
-    );
+    return new Response('ok', { status: 200 });
   } catch (err) {
-    return Response.json(
-      { success: false, message: `请求处理失败: ${err.message}` },
-      { status: 500, headers: CORS_HEADERS }
-    );
+    return Response.json({ error: err.message }, { status: 500 });
   }
 }
 
-function getDeployPage() {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>部署面板</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0f1117;
-    color: #e1e4e8;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .container {
-    width: 100%;
-    max-width: 420px;
-    background: #161b22;
-    border-radius: 12px;
-    padding: 32px 28px;
-    border: 1px solid #30363d;
-  }
-  h1 {
-    font-size: 22px;
-    font-weight: 600;
-    text-align: center;
-    margin-bottom: 28px;
-    color: #f0f6fc;
-  }
-  .field {
-    margin-bottom: 20px;
-  }
-  label {
-    display: block;
-    font-size: 14px;
-    font-weight: 500;
-    color: #8b949e;
-    margin-bottom: 6px;
-  }
-  select, input[type="text"] {
-    width: 100%;
-    padding: 10px 12px;
-    font-size: 15px;
-    background: #0d1117;
-    color: #e1e4e8;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  select:focus, input[type="text"]:focus {
-    border-color: #58a6ff;
-  }
-  input::placeholder {
-    color: #484f58;
-  }
-  .btn {
-    width: 100%;
-    padding: 12px;
-    font-size: 16px;
-    font-weight: 600;
-    color: #fff;
-    background: #238636;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-top: 8px;
-    transition: background 0.2s;
-  }
-  .btn:hover { background: #2ea043; }
-  .btn:active { background: #1a7f37; }
-  .btn:disabled {
-    background: #21262d;
-    color: #484f58;
-    cursor: not-allowed;
-  }
-  .result {
-    margin-top: 20px;
-    padding: 14px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    line-height: 1.6;
-    display: none;
-  }
-  .result.success {
-    background: rgba(35, 134, 54, 0.15);
-    border: 1px solid #238636;
-    color: #3fb950;
-  }
-  .result.error {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid #f85149;
-    color: #f85149;
-  }
-  .params {
-    margin-top: 10px;
-    font-size: 13px;
-    color: #8b949e;
-  }
-  .params span {
-    display: inline-block;
-    background: #21262d;
-    padding: 2px 8px;
-    border-radius: 4px;
-    margin: 2px 4px 2px 0;
-    color: #c9d1d9;
-  }
-</style>
-</head>
-<body>
-<div class="container">
-  <h1>🚀 部署面板</h1>
-  <div class="field">
-    <label for="environment">部署环境</label>
-    <select id="environment">
-      <option value="dev">dev</option>
-      <option value="test">test</option>
-      <option value="prod">prod</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="services">部署服务</label>
-    <select id="services">
-      <option value="all">all</option>
-      <option value="app">app</option>
-      <option value="agent">agent</option>
-      <option value="admin">admin</option>
-      <option value="app+agent">app+agent</option>
-      <option value="app+admin">app+admin</option>
-      <option value="agent+admin">agent+admin</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="version">版本号</label>
-    <input type="text" id="version" placeholder="留空=自动生成时间戳">
-  </div>
-  <div class="field">
-    <label for="branch">分支</label>
-    <input type="text" id="branch" placeholder="留空=默认分支">
-  </div>
-  <button class="btn" id="deployBtn" onclick="deploy()">🚀 开始部署</button>
-  <div class="result" id="result"></div>
-</div>
-<script>
-async function deploy() {
-  const btn = document.getElementById('deployBtn');
-  const result = document.getElementById('result');
-  const payload = {
-    environment: document.getElementById('environment').value,
-    services: document.getElementById('services').value,
-    version: document.getElementById('version').value,
-    branch: document.getElementById('branch').value,
-  };
+// ─── Lark Card Action Callback ──────────────────────────────────────────────────
 
-  btn.disabled = true;
-  btn.textContent = '⏳ 正在触发…';
-  result.style.display = 'none';
-  result.className = 'result';
-
+async function handleCallback(request, env) {
   try {
-    const res = await fetch('/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
+    const body = await request.json();
 
-    if (data.success) {
-      result.className = 'result success';
-      let html = '✅ 已触发部署';
-      if (data.params) {
-        html += '<div class="params">';
-        html += '<span>环境: ' + data.params.environment + '</span>';
-        html += '<span>服务: ' + data.params.services + '</span>';
-        if (data.params.version) html += '<span>版本: ' + data.params.version + '</span>';
-        if (data.params.branch) html += '<span>分支: ' + data.params.branch + '</span>';
-        html += '</div>';
-      }
-      result.innerHTML = html;
-    } else {
-      result.className = 'result error';
-      result.textContent = '❌ 触发失败: ' + data.message;
+    // Verify token
+    if (body.token !== env.LARK_VERIFICATION_TOKEN) {
+      return Response.json({ error: 'invalid token' }, { status: 401 });
     }
+
+    const action = body.action;
+    if (!action) {
+      return new Response('ok', { status: 200 });
+    }
+
+    // Handle deploy button click
+    if (action.value && action.value.key === 'deploy') {
+      const formValue = action.form_value || {};
+      const environment = formValue.environment;
+      const services = formValue.services || 'all';
+      const version = formValue.version || '';
+      const branch = formValue.branch || '';
+
+      // Validate environment
+      if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
+        return Response.json({
+          toast: { type: 'error', content: `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}` },
+          card: buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null),
+        });
+      }
+
+      // Validate services
+      if (!SERVICE_OPTIONS.includes(services)) {
+        return Response.json({
+          toast: { type: 'error', content: `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}` },
+          card: buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null),
+        });
+      }
+
+      // Trigger GitHub workflow
+      try {
+        const githubResponse = await fetch(
+          `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `token ${env.GITHUB_TOKEN}`,
+              Accept: 'application/vnd.github.v3+json',
+              'User-Agent': 'deploy-bot',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ref: branch || 'main',
+              inputs: { environment, version, services, branch },
+            }),
+          }
+        );
+
+        if (githubResponse.status === 204) {
+          const params = { environment, services, version, branch };
+          return Response.json({
+            toast: { type: 'success', content: '已触发部署' },
+            card: buildResultCard(true, '已触发部署', params),
+          });
+        }
+
+        const errorText = await githubResponse.text();
+        return Response.json({
+          toast: { type: 'error', content: '触发失败' },
+          card: buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null),
+        });
+      } catch (err) {
+        return Response.json({
+          toast: { type: 'error', content: '触发失败' },
+          card: buildResultCard(false, `请求处理失败: ${err.message}`, null),
+        });
+      }
+    }
+
+    // Handle redeploy button click
+    if (action.value && action.value.key === 'redeploy') {
+      return Response.json({
+        toast: { type: 'info', content: '请填写部署参数' },
+        card: buildDeployCard(),
+      });
+    }
+
+    return new Response('ok', { status: 200 });
   } catch (err) {
-    result.className = 'result error';
-    result.textContent = '❌ 触发失败: ' + err.message;
+    return Response.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ─── Deployment Notification (called by GitHub Actions) ─────────────────────────
+
+async function handleNotify(request, env) {
+  try {
+    // Verify authorization
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader !== `Bearer ${env.NOTIFY_SECRET}`) {
+      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
+    const data = await request.json();
+    const token = await getLarkToken(env);
+    const card = buildNotifyCard(data);
+
+    await sendLarkMessage(token, env.LARK_CHAT_ID, card);
+
+    return Response.json({ success: true });
+  } catch (err) {
+    return Response.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+// ─── Lark API Helpers ───────────────────────────────────────────────────────────
+
+async function getLarkToken(env) {
+  const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      app_id: env.LARK_APP_ID,
+      app_secret: env.LARK_APP_SECRET,
+    }),
+  });
+  const result = await response.json();
+  if (result.code !== 0) {
+    throw new Error(`Failed to get Lark token: ${result.msg}`);
+  }
+  return result.tenant_access_token;
+}
+
+async function sendLarkMessage(token, chatId, card) {
+  const response = await fetch('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      receive_id: chatId,
+      msg_type: 'interactive',
+      content: JSON.stringify(card),
+    }),
+  });
+  const result = await response.json();
+  if (result.code !== 0) {
+    throw new Error(`Failed to send Lark message: ${result.msg}`);
+  }
+  return result;
+}
+
+// ─── Card Builders ──────────────────────────────────────────────────────────────
+
+function buildDeployCard() {
+  return {
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text', content: '🚀 触发部署' },
+      template: 'blue',
+    },
+    elements: [
+      {
+        tag: 'form',
+        name: 'deploy_form',
+        elements: [
+          {
+            tag: 'select_static',
+            name: 'environment',
+            placeholder: { tag: 'plain_text', content: '选择部署环境' },
+            options: ENVIRONMENT_OPTIONS.map((v) => ({
+              text: { tag: 'plain_text', content: v },
+              value: v,
+            })),
+          },
+          {
+            tag: 'select_static',
+            name: 'services',
+            placeholder: { tag: 'plain_text', content: '选择部署服务' },
+            initial_option: 'all',
+            options: SERVICE_OPTIONS.map((v) => ({
+              text: { tag: 'plain_text', content: v },
+              value: v,
+            })),
+          },
+          {
+            tag: 'input',
+            name: 'version',
+            placeholder: { tag: 'plain_text', content: '留空=自动生成时间戳' },
+          },
+          {
+            tag: 'input',
+            name: 'branch',
+            placeholder: { tag: 'plain_text', content: '留空=默认分支' },
+          },
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '🚀 开始部署' },
+            type: 'primary',
+            name: 'deploy',
+            value: { key: 'deploy' },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildNotifyCard(data) {
+  const {
+    status = 'unknown',
+    actor = '',
+    tag = '',
+    services = '',
+    commit_message = '',
+    commit_time = '',
+    commit_sha = '',
+    repository = GITHUB_REPO,
+    workflow_url = '',
+  } = data;
+
+  const isSuccess = status === 'success';
+  const statusText = isSuccess ? '✅ Success' : '❌ Failed';
+  const commitUrl = commit_sha ? `https://github.com/${repository}/commit/${commit_sha}` : '';
+
+  const mdLines = [
+    `**发起人:** ${actor}`,
+    `**Tag:** ${tag}`,
+    `**构建服务:** ${services}`,
+    `**状态:** ${statusText}`,
+    `**提交信息:** ${commit_message}`,
+    `**提交时间:** ${commit_time}`,
+  ];
+  if (commitUrl) {
+    mdLines.push(`**提交:** [${commit_sha.substring(0, 7)}](${commitUrl})`);
   }
 
-  result.style.display = 'block';
-  btn.disabled = false;
-  btn.textContent = '🚀 开始部署';
+  const buttons = [];
+  if (workflow_url) {
+    buttons.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: '查看 Workflow' },
+      type: 'default',
+      url: workflow_url,
+    });
+  }
+  if (commitUrl) {
+    buttons.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: '查看提交' },
+      type: 'default',
+      url: commitUrl,
+    });
+  }
+  buttons.push({
+    tag: 'button',
+    text: { tag: 'plain_text', content: '🚀 重新部署' },
+    type: 'primary',
+    value: { key: 'redeploy' },
+  });
+
+  return {
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text', content: 'GitHub Action 执行通知' },
+      template: isSuccess ? 'green' : 'red',
+    },
+    elements: [
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: mdLines.join('\n'),
+        },
+      },
+      {
+        tag: 'action',
+        actions: buttons,
+      },
+    ],
+  };
 }
-</script>
-</body>
-</html>`;
+
+function buildResultCard(success, message, params) {
+  const elements = [
+    {
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: success ? `✅ ${message}` : `❌ ${message}`,
+      },
+    },
+  ];
+
+  if (params) {
+    const paramLines = [`**环境:** ${params.environment}`, `**服务:** ${params.services}`];
+    if (params.version) paramLines.push(`**版本:** ${params.version}`);
+    if (params.branch) paramLines.push(`**分支:** ${params.branch}`);
+    elements.push({
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: paramLines.join('\n'),
+      },
+    });
+  }
+
+  return {
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text', content: success ? '✅ 部署触发成功' : '❌ 部署触发失败' },
+      template: success ? 'green' : 'red',
+    },
+    elements,
+  };
 }

@@ -427,65 +427,28 @@ jobs:
           COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
           REPOSITORY: ${{ secrets.REPOSITORY }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DEPLOY_URL: https://deploy-bot.ricex-mr.workers.dev
-          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
+          WORKER_URL: https://deploy-bot.ricex-mr.workers.dev
+          NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
         run: |
-          STATUS_TEXT="✅ Success"
+          STATUS_TEXT="success"
           if [ "$STATUS" != "success" ]; then
-            STATUS_TEXT="❌ Failed"
+            STATUS_TEXT="failed"
           fi
-
-          TAG_NAME="${DEPLOY_TAG}"
 
           COMMIT_URL="https://github.com/${REPOSITORY}/commit/${COMMIT_SHA}"
 
-          JSON_PAYLOAD=$(cat <<EOF
-              {
-                "msg_type": "interactive",
-                "card": {
-                  "header": {
-                    "title": {
-                      "tag": "plain_text",
-                      "content": "GitHub Action 执行通知"
-                    }
-                  },
-                  "elements": [
-                    {
-                      "tag": "div",
-                      "text": {
-                        "tag": "lark_md",
-                        "content": "**发起人**: ${ACTOR}\n**Tag**: ${TAG_NAME}\n**构建服务**: ${SERVICES}\n**状态**: ${STATUS_TEXT}\n**提交信息**: ${COMMIT_MESSAGE}\n**提交时间**: ${COMMIT_TIME}\n[查看提交](${COMMIT_URL})"
-                      }
-                    },
-                    {
-                      "tag": "action",
-                      "actions": [
-                        {
-                          "tag": "button",
-                          "text": {
-                            "tag": "lark_md",
-                            "content": "查看 Workflow"
-                          },
-                          "url": "${WORKFLOW_URL}",
-                          "type": "default"
-                        },
-                        {
-                          "tag": "button",
-                          "text": {
-                            "tag": "lark_md",
-                            "content": "触发部署"
-                          },
-                          "url": "${DEPLOY_URL}",
-                          "type": "primary"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              }
-          EOF
-          )
-
-          curl -X POST "$LARK_WEBHOOK" \
-          -H "Content-Type: application/json" \
-          -d "$JSON_PAYLOAD"
+          curl -s -X POST "${WORKER_URL}/notify" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${NOTIFY_SECRET}" \
+            -d "{
+              \"status\": \"${STATUS_TEXT}\",
+              \"actor\": \"${ACTOR}\",
+              \"tag\": \"${DEPLOY_TAG}\",
+              \"services\": \"${SERVICES}\",
+              \"commit_message\": \"${COMMIT_MESSAGE}\",
+              \"commit_time\": \"${COMMIT_TIME}\",
+              \"commit_sha\": \"${COMMIT_SHA}\",
+              \"repository\": \"${REPOSITORY}\",
+              \"workflow_url\": \"${WORKFLOW_URL}\",
+              \"commit_url\": \"${COMMIT_URL}\"
+            }"
