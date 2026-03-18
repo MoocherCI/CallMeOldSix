@@ -427,7 +427,7 @@ jobs:
           COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
           REPOSITORY: ${{ secrets.REPOSITORY }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DEPLOY_URL: https://github.com/${{ github.repository }}/actions/workflows/deploy.yml
+          DEPLOY_URL: https://deploy-bot.ricex-mr.workers.dev
           LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
         run: |
           STATUS_TEXT="✅ Success"
