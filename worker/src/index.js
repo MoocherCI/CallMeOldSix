@@ -23,6 +23,10 @@ export default {
       return handleNotify(request, env);
     }
 
+    if (request.method === 'GET' && url.pathname === '/test-deploy') {
+      return handleTestDeploy(env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/') {
       return Response.json({ status: 'ok', service: 'deploy-bot' });
     }
@@ -36,6 +40,7 @@ export default {
 async function handleEvent(request, env) {
   try {
     const body = await request.json();
+    console.log('[event] Received event:', JSON.stringify(body).substring(0, 500));
 
     // Lark challenge verification
     if (body.type === 'url_verification') {
@@ -50,17 +55,22 @@ async function handleEvent(request, env) {
     // Handle message events
     if (body.header.event_type === 'im.message.receive_v1') {
       const message = body.event?.message;
+      console.log('[event] Message event received, message:', JSON.stringify(message).substring(0, 300));
       if (message) {
         try {
           const content = JSON.parse(message.content);
           const text = (content.text || '').trim().toLowerCase();
+          console.log('[event] Parsed text:', text);
           if (text.includes('/deploy')) {
-            const token = await getLarkToken(env);
             const chatId = message.chat_id;
+            console.log('[event] /deploy command detected, chatId:', chatId);
+            const token = await getLarkToken(env);
+            console.log('[event] Got Lark token successfully');
             await sendLarkMessage(token, chatId, buildDeployCard());
+            console.log('[event] Deploy card sent successfully');
           }
         } catch (e) {
-          // Ignore parse errors for non-text messages
+          console.error('[event] Error processing message:', e.message, e.stack);
         }
       }
     }
@@ -68,6 +78,24 @@ async function handleEvent(request, env) {
     return new Response('ok', { status: 200 });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ─── Test Deploy Endpoint ──────────────────────────────────────────────────────
+
+async function handleTestDeploy(env) {
+  try {
+    console.log('[test-deploy] Starting test...');
+    const token = await getLarkToken(env);
+    console.log('[test-deploy] Got Lark token successfully');
+    const card = buildDeployCard();
+    console.log('[test-deploy] Built deploy card:', JSON.stringify(card).substring(0, 200));
+    const result = await sendLarkMessage(token, env.LARK_CHAT_ID, card);
+    console.log('[test-deploy] sendLarkMessage result:', JSON.stringify(result));
+    return Response.json({ success: true, result });
+  } catch (err) {
+    console.error('[test-deploy] Error:', err.message, err.stack);
+    return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
 
