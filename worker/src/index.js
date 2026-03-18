@@ -1,7 +1,7 @@
+import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
+
 const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 const GITHUB_WORKFLOW = 'deploy.yml';
-const ENVIRONMENT_OPTIONS = ['dev', 'test', 'prod'];
-const SERVICE_OPTIONS = ['all', 'app', 'agent', 'admin', 'app+agent', 'app+admin', 'agent+admin'];
 
 export default {
   async fetch(request, env) {
@@ -175,10 +175,10 @@ async function handleDebugCallbackResponse(env) {
   const errorCard = buildResultCard(false, 'GitHub API 返回 403: ...', null);
   const redeployCard = buildDeployCard();
   return Response.json({
-    note: 'These are the exact response bodies handleCallback returns to Lark',
-    success_response: successCard,
-    error_response: errorCard,
-    redeploy_response: redeployCard,
+    note: 'These are the exact response bodies handleCallback returns to Lark (wrapped in card.raw for schema 2.0)',
+    success_response: { card: { type: 'raw', data: successCard } },
+    error_response: { card: { type: 'raw', data: errorCard } },
+    redeploy_response: { card: { type: 'raw', data: redeployCard } },
   });
 }
 
@@ -189,26 +189,37 @@ async function handleCallback(request, env) {
     const body = await request.json();
     console.log('[callback] Received callback:', JSON.stringify(body).substring(0, 500));
 
-    // Handle Lark URL verification challenge
+    // Handle Lark URL verification challenge (uses body.type at root level regardless of format)
     if (body.type === 'url_verification') {
       return Response.json({ challenge: body.challenge });
     }
 
+    // Detect callback format version
+    const isNewFormat = body.schema === '2.0';
+    console.log('[callback] Format detected:', isNewFormat ? 'card.action.trigger (schema 2.0)' : 'legacy');
+
+    // Extract token and action based on format
+    const token = isNewFormat ? body.header?.token : body.token;
+    const action = isNewFormat ? body.event?.action : body.action;
+
     // Verify token
-    console.log('[callback] Token check:', body.token ? 'present' : 'missing', 'expected:', env.LARK_VERIFICATION_TOKEN ? 'configured' : 'NOT configured');
-    if (body.token !== env.LARK_VERIFICATION_TOKEN) {
+    console.log('[callback] Token check:', token ? 'present' : 'missing', 'expected:', env.LARK_VERIFICATION_TOKEN ? 'configured' : 'NOT configured');
+    if (token !== env.LARK_VERIFICATION_TOKEN) {
       return Response.json({ error: 'invalid token' }, { status: 401 });
     }
 
-    const action = body.action;
     console.log('[callback] Action:', JSON.stringify(action).substring(0, 300));
     if (!action) {
       return new Response('ok', { status: 200 });
     }
 
+    // Log form_value and value for diagnostics
+    console.log('[callback] action.form_value:', JSON.stringify(action.form_value));
+    console.log('[callback] action.value:', JSON.stringify(action.value));
+
     // Handle deploy button click
     if (action.value && action.value.key === 'deploy') {
-      console.log('[callback] Deploy action triggered, form_value:', JSON.stringify(action.form_value));
+      console.log('[callback] Deploy action triggered');
       const formValue = action.form_value || {};
       const environment = formValue.environment;
       const services = formValue.services || 'all';
@@ -217,12 +228,12 @@ async function handleCallback(request, env) {
 
       // Validate environment
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
-        return Response.json(buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null));
+        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null) } });
       }
 
       // Validate services
       if (!SERVICE_OPTIONS.includes(services)) {
-        return Response.json(buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null));
+        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null) } });
       }
 
       // Trigger GitHub workflow
@@ -248,19 +259,19 @@ async function handleCallback(request, env) {
 
         if (githubResponse.status === 204) {
           const params = { environment, services, version, branch };
-          return Response.json(buildResultCard(true, '已触发部署', params));
+          return Response.json({ card: { type: 'raw', data: buildResultCard(true, '已触发部署', params) } });
         }
 
         const errorText = await githubResponse.text();
-        return Response.json(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null));
+        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null) } });
       } catch (err) {
-        return Response.json(buildResultCard(false, `请求处理失败: ${err.message}`, null));
+        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `请求处理失败: ${err.message}`, null) } });
       }
     }
 
     // Handle redeploy button click
     if (action.value && action.value.key === 'redeploy') {
-      return Response.json(buildDeployCard());
+      return Response.json({ card: { type: 'raw', data: buildDeployCard() } });
     }
 
     return new Response('ok', { status: 200 });
@@ -328,170 +339,4 @@ async function sendLarkMessage(token, chatId, card) {
     throw new Error(`Failed to send Lark message: ${result.msg}`);
   }
   return result;
-}
-
-// ─── Card Builders ──────────────────────────────────────────────────────────────
-
-function buildDeployCard() {
-  return {
-    config: { update_multi: true },
-    header: {
-      title: { tag: 'plain_text', content: '🚀 触发部署' },
-      template: 'blue',
-    },
-    elements: [
-      {
-        tag: 'form',
-        name: 'deploy_form',
-        elements: [
-          {
-            tag: 'select_static',
-            name: 'environment',
-            placeholder: { tag: 'plain_text', content: '选择部署环境' },
-            options: ENVIRONMENT_OPTIONS.map((v) => ({
-              text: { tag: 'plain_text', content: v },
-              value: v,
-            })),
-          },
-          {
-            tag: 'select_static',
-            name: 'services',
-            placeholder: { tag: 'plain_text', content: '选择部署服务' },
-            initial_option: 'all',
-            options: SERVICE_OPTIONS.map((v) => ({
-              text: { tag: 'plain_text', content: v },
-              value: v,
-            })),
-          },
-          {
-            tag: 'input',
-            name: 'version',
-            placeholder: { tag: 'plain_text', content: '留空=自动生成时间戳' },
-          },
-          {
-            tag: 'input',
-            name: 'branch',
-            placeholder: { tag: 'plain_text', content: '留空=默认分支' },
-          },
-          {
-            tag: 'button',
-            text: { tag: 'plain_text', content: '🚀 开始部署' },
-            type: 'primary',
-            form_action_type: 'submit',
-            name: 'deploy',
-            value: { key: 'deploy' },
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function buildNotifyCard(data) {
-  const {
-    status = 'unknown',
-    actor = '',
-    tag = '',
-    services = '',
-    commit_message = '',
-    commit_time = '',
-    commit_sha = '',
-    repository = GITHUB_REPO,
-    workflow_url = '',
-  } = data;
-
-  const isSuccess = status === 'success';
-  const statusText = isSuccess ? '✅ Success' : '❌ Failed';
-  const commitUrl = commit_sha ? `https://github.com/${repository}/commit/${commit_sha}` : '';
-
-  const mdLines = [
-    `**发起人:** ${actor}`,
-    `**Tag:** ${tag}`,
-    `**构建服务:** ${services}`,
-    `**状态:** ${statusText}`,
-    `**提交信息:** ${commit_message}`,
-    `**提交时间:** ${commit_time}`,
-  ];
-  if (commitUrl) {
-    mdLines.push(`**提交:** [${commit_sha.substring(0, 7)}](${commitUrl})`);
-  }
-
-  const buttons = [];
-  if (workflow_url) {
-    buttons.push({
-      tag: 'button',
-      text: { tag: 'plain_text', content: '查看 Workflow' },
-      type: 'default',
-      url: workflow_url,
-    });
-  }
-  if (commitUrl) {
-    buttons.push({
-      tag: 'button',
-      text: { tag: 'plain_text', content: '查看提交' },
-      type: 'default',
-      url: commitUrl,
-    });
-  }
-  buttons.push({
-    tag: 'button',
-    text: { tag: 'plain_text', content: '🚀 重新部署' },
-    type: 'primary',
-    value: { key: 'redeploy' },
-  });
-
-  return {
-    config: { update_multi: true },
-    header: {
-      title: { tag: 'plain_text', content: 'GitHub Action 执行通知' },
-      template: isSuccess ? 'green' : 'red',
-    },
-    elements: [
-      {
-        tag: 'div',
-        text: {
-          tag: 'lark_md',
-          content: mdLines.join('\n'),
-        },
-      },
-      {
-        tag: 'action',
-        actions: buttons,
-      },
-    ],
-  };
-}
-
-function buildResultCard(success, message, params) {
-  const elements = [
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: success ? `✅ ${message}` : `❌ ${message}`,
-      },
-    },
-  ];
-
-  if (params) {
-    const paramLines = [`**环境:** ${params.environment}`, `**服务:** ${params.services}`];
-    if (params.version) paramLines.push(`**版本:** ${params.version}`);
-    if (params.branch) paramLines.push(`**分支:** ${params.branch}`);
-    elements.push({
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: paramLines.join('\n'),
-      },
-    });
-  }
-
-  return {
-    config: { update_multi: true },
-    header: {
-      title: { tag: 'plain_text', content: success ? '✅ 部署触发成功' : '❌ 部署触发失败' },
-      template: success ? 'green' : 'red',
-    },
-    elements,
-  };
 }
