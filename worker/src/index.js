@@ -27,6 +27,10 @@ export default {
       return handleTestDeploy(env);
     }
 
+    if (request.method === 'GET' && url.pathname === '/test-callback') {
+      return handleTestCallback(env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/') {
       return Response.json({ status: 'ok', service: 'deploy-bot' });
     }
@@ -99,11 +103,73 @@ async function handleTestDeploy(env) {
   }
 }
 
+// ─── Test Callback Endpoint ───────────────────────────────────────────────────
+
+async function handleTestCallback(env) {
+  const steps = {};
+  try {
+    // Step 1: Check GITHUB_TOKEN
+    const hasGithubToken = !!(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim());
+    steps.github_token = hasGithubToken ? 'present' : 'EMPTY — deploy will fail, run: cd worker && npx wrangler secret put GITHUB_TOKEN';
+
+    // Step 2: Simulate form values (same as a real button click)
+    const formValue = { environment: 'dev', services: 'all', version: '', branch: '' };
+    steps.form_value = formValue;
+
+    // Step 3: Validate environment
+    if (!ENVIRONMENT_OPTIONS.includes(formValue.environment)) {
+      steps.validation = 'environment validation failed';
+      return Response.json({ success: false, steps });
+    }
+    steps.validation = 'passed';
+
+    // Step 4: Get Lark token (to verify we can send responses)
+    const token = await getLarkToken(env);
+    steps.lark_token = 'obtained successfully';
+
+    // Step 5: Try GitHub API call (only if token is present)
+    if (!hasGithubToken) {
+      steps.github_api = 'SKIPPED — GITHUB_TOKEN is empty';
+      return Response.json({ success: false, steps, fix: 'Run: cd worker && npx wrangler secret put GITHUB_TOKEN and paste your GitHub PAT' });
+    }
+
+    const githubResponse = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `token ${env.GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'deploy-bot',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: { environment: 'dev', version: '', services: 'all', branch: '' },
+        }),
+      }
+    );
+
+    if (githubResponse.status === 204) {
+      steps.github_api = 'SUCCESS — workflow dispatched (status 204)';
+      return Response.json({ success: true, steps });
+    }
+
+    const errorText = await githubResponse.text();
+    steps.github_api = `FAILED — status ${githubResponse.status}: ${errorText}`;
+    return Response.json({ success: false, steps });
+  } catch (err) {
+    steps.error = err.message;
+    return Response.json({ success: false, steps, error: err.message });
+  }
+}
+
 // ─── Lark Card Action Callback ──────────────────────────────────────────────────
 
 async function handleCallback(request, env) {
   try {
     const body = await request.json();
+    console.log('[callback] Received callback:', JSON.stringify(body).substring(0, 500));
 
     // Handle Lark URL verification challenge
     if (body.type === 'url_verification') {
@@ -111,17 +177,20 @@ async function handleCallback(request, env) {
     }
 
     // Verify token
+    console.log('[callback] Token check:', body.token ? 'present' : 'missing', 'expected:', env.LARK_VERIFICATION_TOKEN ? 'configured' : 'NOT configured');
     if (body.token !== env.LARK_VERIFICATION_TOKEN) {
       return Response.json({ error: 'invalid token' }, { status: 401 });
     }
 
     const action = body.action;
+    console.log('[callback] Action:', JSON.stringify(action).substring(0, 300));
     if (!action) {
       return new Response('ok', { status: 200 });
     }
 
     // Handle deploy button click
     if (action.value && action.value.key === 'deploy') {
+      console.log('[callback] Deploy action triggered, form_value:', JSON.stringify(action.form_value));
       const formValue = action.form_value || {};
       const environment = formValue.environment;
       const services = formValue.services || 'all';
@@ -163,6 +232,8 @@ async function handleCallback(request, env) {
           }
         );
 
+        console.log('[callback] GitHub API response status:', githubResponse.status);
+
         if (githubResponse.status === 204) {
           const params = { environment, services, version, branch };
           return Response.json({
@@ -194,6 +265,7 @@ async function handleCallback(request, env) {
 
     return new Response('ok', { status: 200 });
   } catch (err) {
+    console.error('[callback] Unhandled error:', err.message, err.stack);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
