@@ -200,13 +200,13 @@ async function handleCallback(request, env) {
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
         return Response.json({
           toast: { type: "error", content: `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}` },
-          card: buildResultCard(false, `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}`, null)
+          card: JSON.stringify(buildResultCard(false, `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}`, null))
         });
       }
       if (!SERVICE_OPTIONS.includes(services)) {
         return Response.json({
           toast: { type: "error", content: `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}` },
-          card: buildResultCard(false, `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}`, null)
+          card: JSON.stringify(buildResultCard(false, `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}`, null))
         });
       }
       try {
@@ -231,25 +231,25 @@ async function handleCallback(request, env) {
           const params = { environment, services, version, branch };
           return Response.json({
             toast: { type: "success", content: "\u5DF2\u89E6\u53D1\u90E8\u7F72" },
-            card: buildResultCard(true, "\u5DF2\u89E6\u53D1\u90E8\u7F72", params)
+            card: JSON.stringify(buildResultCard(true, "\u5DF2\u89E6\u53D1\u90E8\u7F72", params))
           });
         }
         const errorText = await githubResponse.text();
         return Response.json({
           toast: { type: "error", content: "\u89E6\u53D1\u5931\u8D25" },
-          card: buildResultCard(false, `GitHub API \u8FD4\u56DE ${githubResponse.status}: ${errorText}`, null)
+          card: JSON.stringify(buildResultCard(false, `GitHub API \u8FD4\u56DE ${githubResponse.status}: ${errorText}`, null))
         });
       } catch (err) {
         return Response.json({
           toast: { type: "error", content: "\u89E6\u53D1\u5931\u8D25" },
-          card: buildResultCard(false, `\u8BF7\u6C42\u5904\u7406\u5931\u8D25: ${err.message}`, null)
+          card: JSON.stringify(buildResultCard(false, `\u8BF7\u6C42\u5904\u7406\u5931\u8D25: ${err.message}`, null))
         });
       }
     }
     if (action.value && action.value.key === "redeploy") {
       return Response.json({
         toast: { type: "info", content: "\u8BF7\u586B\u5199\u90E8\u7F72\u53C2\u6570" },
-        card: buildDeployCard()
+        card: JSON.stringify(buildDeployCard())
       });
     }
     return new Response("ok", { status: 200 });

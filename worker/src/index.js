@@ -201,7 +201,7 @@ async function handleCallback(request, env) {
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
         return Response.json({
           toast: { type: 'error', content: `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}` },
-          card: buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null),
+          card: JSON.stringify(buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null)),
         });
       }
 
@@ -209,7 +209,7 @@ async function handleCallback(request, env) {
       if (!SERVICE_OPTIONS.includes(services)) {
         return Response.json({
           toast: { type: 'error', content: `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}` },
-          card: buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null),
+          card: JSON.stringify(buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null)),
         });
       }
 
@@ -238,19 +238,19 @@ async function handleCallback(request, env) {
           const params = { environment, services, version, branch };
           return Response.json({
             toast: { type: 'success', content: '已触发部署' },
-            card: buildResultCard(true, '已触发部署', params),
+            card: JSON.stringify(buildResultCard(true, '已触发部署', params)),
           });
         }
 
         const errorText = await githubResponse.text();
         return Response.json({
           toast: { type: 'error', content: '触发失败' },
-          card: buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null),
+          card: JSON.stringify(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null)),
         });
       } catch (err) {
         return Response.json({
           toast: { type: 'error', content: '触发失败' },
-          card: buildResultCard(false, `请求处理失败: ${err.message}`, null),
+          card: JSON.stringify(buildResultCard(false, `请求处理失败: ${err.message}`, null)),
         });
       }
     }
@@ -259,7 +259,7 @@ async function handleCallback(request, env) {
     if (action.value && action.value.key === 'redeploy') {
       return Response.json({
         toast: { type: 'info', content: '请填写部署参数' },
-        card: buildDeployCard(),
+        card: JSON.stringify(buildDeployCard()),
       });
     }
 
