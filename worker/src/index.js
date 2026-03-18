@@ -256,7 +256,7 @@ async function handleCallback(request, env) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              ref: branch || 'main',
+              ref: 'main',
               inputs: { environment, version, services, branch },
             }),
           }
@@ -270,6 +270,7 @@ async function handleCallback(request, env) {
         }
 
         const errorText = await githubResponse.text();
+        console.log('[callback] GitHub API error body:', errorText);
         return Response.json(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null));
       } catch (err) {
         return Response.json(buildResultCard(false, `请求处理失败: ${err.message}`, null));
