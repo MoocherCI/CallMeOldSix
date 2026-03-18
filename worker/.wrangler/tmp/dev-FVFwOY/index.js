@@ -300,6 +300,7 @@ function buildDeployCard() {
             tag: "button",
             text: { tag: "plain_text", content: "\u{1F680} \u5F00\u59CB\u90E8\u7F72" },
             type: "primary",
+            form_action_type: "submit",
             name: "deploy",
             value: { key: "deploy" }
           }

@@ -305,6 +305,7 @@ function buildDeployCard() {
             tag: 'button',
             text: { tag: 'plain_text', content: '🚀 开始部署' },
             type: 'primary',
+            form_action_type: 'submit',
             name: 'deploy',
             value: { key: 'deploy' },
           },
