@@ -395,13 +395,15 @@ jobs:
 
             # Run database migrations (conditional)
             if [ "${{ env.BUILD_APP }}" = "true" ]; then
-              docker compose exec -T --user root app npx prisma migrate deploy
+              docker compose exec -T --user root app npx prisma migrate deploy || true
             fi
 
             # Run admin database migrations and seed (conditional)
             if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
-              docker compose exec -T admin npx prisma migrate deploy
-              docker compose exec -T admin node prisma/seed.js
+              docker compose exec -T admin npx prisma migrate deploy || true
+              if [ ! -f ~/cuneim/.seed_done ]; then
+                docker compose exec -T admin node prisma/seed.js && touch ~/cuneim/.seed_done
+              fi
             fi
 
             # Deploy admin nginx config (conditional)
