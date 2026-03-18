@@ -175,10 +175,10 @@ async function handleDebugCallbackResponse(env) {
   const errorCard = buildResultCard(false, 'GitHub API 返回 403: ...', null);
   const redeployCard = buildDeployCard();
   return Response.json({
-    note: 'These are the exact response bodies handleCallback returns to Lark (wrapped in card.raw for schema 2.0)',
-    success_response: { card: { type: 'raw', data: successCard } },
-    error_response: { card: { type: 'raw', data: errorCard } },
-    redeploy_response: { card: { type: 'raw', data: redeployCard } },
+    note: 'These are the exact response bodies handleCallback returns to Lark (card object directly)',
+    success_response: successCard,
+    error_response: errorCard,
+    redeploy_response: redeployCard,
   });
 }
 
@@ -198,11 +198,18 @@ async function handleCallback(request, env) {
     const isNewFormat = body.schema === '2.0';
     console.log('[callback] Format detected:', isNewFormat ? 'card.action.trigger (schema 2.0)' : 'legacy');
 
-    // Extract token and action based on format
-    const token = isNewFormat ? body.header?.token : body.token;
-    const action = isNewFormat ? body.event?.action : body.action;
+    if (!isNewFormat) {
+      // Legacy format: body.token is a card action token ("c-..."), NOT the verification token.
+      // Lark sends both legacy and schema 2.0 callbacks simultaneously.
+      // Let the schema 2.0 request handle the real work; just return 200 here.
+      console.log('[callback] Legacy format — skipping (schema 2.0 request will handle)');
+      return Response.json({});
+    }
 
-    // Verify token
+    // Schema 2.0: verify header token (this IS the verification token)
+    const token = body.header?.token;
+    const action = body.event?.action;
+
     console.log('[callback] Token check:', token ? 'present' : 'missing', 'expected:', env.LARK_VERIFICATION_TOKEN ? 'configured' : 'NOT configured');
     if (token !== env.LARK_VERIFICATION_TOKEN) {
       return Response.json({ error: 'invalid token' }, { status: 401 });
@@ -213,12 +220,12 @@ async function handleCallback(request, env) {
       return new Response('ok', { status: 200 });
     }
 
-    // Log form_value and value for diagnostics
+    // Log form_value and name for diagnostics
     console.log('[callback] action.form_value:', JSON.stringify(action.form_value));
-    console.log('[callback] action.value:', JSON.stringify(action.value));
+    console.log('[callback] action.name:', action.name);
 
     // Handle deploy button click
-    if (action.value && action.value.key === 'deploy') {
+    if (action.name === 'deploy') {
       console.log('[callback] Deploy action triggered');
       const formValue = action.form_value || {};
       const environment = formValue.environment;
@@ -228,12 +235,12 @@ async function handleCallback(request, env) {
 
       // Validate environment
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
-        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null) } });
+        return Response.json(buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null));
       }
 
       // Validate services
       if (!SERVICE_OPTIONS.includes(services)) {
-        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null) } });
+        return Response.json(buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null));
       }
 
       // Trigger GitHub workflow
@@ -259,19 +266,19 @@ async function handleCallback(request, env) {
 
         if (githubResponse.status === 204) {
           const params = { environment, services, version, branch };
-          return Response.json({ card: { type: 'raw', data: buildResultCard(true, '已触发部署', params) } });
+          return Response.json(buildResultCard(true, '已触发部署', params));
         }
 
         const errorText = await githubResponse.text();
-        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null) } });
+        return Response.json(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null));
       } catch (err) {
-        return Response.json({ card: { type: 'raw', data: buildResultCard(false, `请求处理失败: ${err.message}`, null) } });
+        return Response.json(buildResultCard(false, `请求处理失败: ${err.message}`, null));
       }
     }
 
     // Handle redeploy button click
-    if (action.value && action.value.key === 'redeploy') {
-      return Response.json({ card: { type: 'raw', data: buildDeployCard() } });
+    if (action.name === 'redeploy') {
+      return Response.json(buildDeployCard());
     }
 
     return new Response('ok', { status: 200 });
