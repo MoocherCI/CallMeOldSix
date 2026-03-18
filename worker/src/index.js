@@ -11,6 +11,10 @@ export default {
       return handleEvent(request, env);
     }
 
+    if (request.method === 'GET' && url.pathname === '/callback') {
+      return Response.json({ status: 'ok' });
+    }
+
     if (request.method === 'POST' && url.pathname === '/callback') {
       return handleCallback(request, env);
     }
