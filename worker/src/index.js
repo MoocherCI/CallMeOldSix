@@ -73,6 +73,11 @@ async function handleCallback(request, env) {
   try {
     const body = await request.json();
 
+    // Handle Lark URL verification challenge
+    if (body.type === 'url_verification') {
+      return Response.json({ challenge: body.challenge });
+    }
+
     // Verify token
     if (body.token !== env.LARK_VERIFICATION_TOKEN) {
       return Response.json({ error: 'invalid token' }, { status: 401 });
