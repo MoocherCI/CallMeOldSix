@@ -68,6 +68,9 @@ var src_default = {
     if (request.method === "GET" && url.pathname === "/test-callback") {
       return handleTestCallback(env);
     }
+    if (request.method === "GET" && url.pathname === "/debug-callback-response") {
+      return handleDebugCallbackResponse(env);
+    }
     if (request.method === "GET" && url.pathname === "/") {
       return Response.json({ status: "ok", service: "deploy-bot" });
     }
@@ -174,6 +177,18 @@ async function handleTestCallback(env) {
   }
 }
 __name(handleTestCallback, "handleTestCallback");
+async function handleDebugCallbackResponse(env) {
+  const successCard = buildResultCard(true, "\u5DF2\u89E6\u53D1\u90E8\u7F72", { environment: "dev", services: "all", version: "", branch: "" });
+  const errorCard = buildResultCard(false, "GitHub API \u8FD4\u56DE 403: ...", null);
+  const redeployCard = buildDeployCard();
+  return Response.json({
+    note: "These are the exact response bodies handleCallback returns to Lark",
+    success_response: successCard,
+    error_response: errorCard,
+    redeploy_response: redeployCard
+  });
+}
+__name(handleDebugCallbackResponse, "handleDebugCallbackResponse");
 async function handleCallback(request, env) {
   try {
     const body = await request.json();
@@ -198,16 +213,10 @@ async function handleCallback(request, env) {
       const version = formValue.version || "";
       const branch = formValue.branch || "";
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
-        return Response.json({
-          toast: { type: "error", content: `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}` },
-          card: JSON.stringify(buildResultCard(false, `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}`, null))
-        });
+        return Response.json(buildResultCard(false, `\u65E0\u6548\u7684\u90E8\u7F72\u73AF\u5883\uFF0C\u53EF\u9009\u503C: ${ENVIRONMENT_OPTIONS.join(", ")}`, null));
       }
       if (!SERVICE_OPTIONS.includes(services)) {
-        return Response.json({
-          toast: { type: "error", content: `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}` },
-          card: JSON.stringify(buildResultCard(false, `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}`, null))
-        });
+        return Response.json(buildResultCard(false, `\u65E0\u6548\u7684\u670D\u52A1\u9009\u9879\uFF0C\u53EF\u9009\u503C: ${SERVICE_OPTIONS.join(", ")}`, null));
       }
       try {
         const githubResponse = await fetch(
@@ -229,28 +238,16 @@ async function handleCallback(request, env) {
         console.log("[callback] GitHub API response status:", githubResponse.status);
         if (githubResponse.status === 204) {
           const params = { environment, services, version, branch };
-          return Response.json({
-            toast: { type: "success", content: "\u5DF2\u89E6\u53D1\u90E8\u7F72" },
-            card: JSON.stringify(buildResultCard(true, "\u5DF2\u89E6\u53D1\u90E8\u7F72", params))
-          });
+          return Response.json(buildResultCard(true, "\u5DF2\u89E6\u53D1\u90E8\u7F72", params));
         }
         const errorText = await githubResponse.text();
-        return Response.json({
-          toast: { type: "error", content: "\u89E6\u53D1\u5931\u8D25" },
-          card: JSON.stringify(buildResultCard(false, `GitHub API \u8FD4\u56DE ${githubResponse.status}: ${errorText}`, null))
-        });
+        return Response.json(buildResultCard(false, `GitHub API \u8FD4\u56DE ${githubResponse.status}: ${errorText}`, null));
       } catch (err) {
-        return Response.json({
-          toast: { type: "error", content: "\u89E6\u53D1\u5931\u8D25" },
-          card: JSON.stringify(buildResultCard(false, `\u8BF7\u6C42\u5904\u7406\u5931\u8D25: ${err.message}`, null))
-        });
+        return Response.json(buildResultCard(false, `\u8BF7\u6C42\u5904\u7406\u5931\u8D25: ${err.message}`, null));
       }
     }
     if (action.value && action.value.key === "redeploy") {
-      return Response.json({
-        toast: { type: "info", content: "\u8BF7\u586B\u5199\u90E8\u7F72\u53C2\u6570" },
-        card: JSON.stringify(buildDeployCard())
-      });
+      return Response.json(buildDeployCard());
     }
     return new Response("ok", { status: 200 });
   } catch (err) {

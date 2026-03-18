@@ -31,6 +31,10 @@ export default {
       return handleTestCallback(env);
     }
 
+    if (request.method === 'GET' && url.pathname === '/debug-callback-response') {
+      return handleDebugCallbackResponse(env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/') {
       return Response.json({ status: 'ok', service: 'deploy-bot' });
     }
@@ -164,6 +168,20 @@ async function handleTestCallback(env) {
   }
 }
 
+// ─── Debug Callback Response ──────────────────────────────────────────────────
+
+async function handleDebugCallbackResponse(env) {
+  const successCard = buildResultCard(true, '已触发部署', { environment: 'dev', services: 'all', version: '', branch: '' });
+  const errorCard = buildResultCard(false, 'GitHub API 返回 403: ...', null);
+  const redeployCard = buildDeployCard();
+  return Response.json({
+    note: 'These are the exact response bodies handleCallback returns to Lark',
+    success_response: successCard,
+    error_response: errorCard,
+    redeploy_response: redeployCard,
+  });
+}
+
 // ─── Lark Card Action Callback ──────────────────────────────────────────────────
 
 async function handleCallback(request, env) {
@@ -199,18 +217,12 @@ async function handleCallback(request, env) {
 
       // Validate environment
       if (!environment || !ENVIRONMENT_OPTIONS.includes(environment)) {
-        return Response.json({
-          toast: { type: 'error', content: `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}` },
-          card: JSON.stringify(buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null)),
-        });
+        return Response.json(buildResultCard(false, `无效的部署环境，可选值: ${ENVIRONMENT_OPTIONS.join(', ')}`, null));
       }
 
       // Validate services
       if (!SERVICE_OPTIONS.includes(services)) {
-        return Response.json({
-          toast: { type: 'error', content: `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}` },
-          card: JSON.stringify(buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null)),
-        });
+        return Response.json(buildResultCard(false, `无效的服务选项，可选值: ${SERVICE_OPTIONS.join(', ')}`, null));
       }
 
       // Trigger GitHub workflow
@@ -236,31 +248,19 @@ async function handleCallback(request, env) {
 
         if (githubResponse.status === 204) {
           const params = { environment, services, version, branch };
-          return Response.json({
-            toast: { type: 'success', content: '已触发部署' },
-            card: JSON.stringify(buildResultCard(true, '已触发部署', params)),
-          });
+          return Response.json(buildResultCard(true, '已触发部署', params));
         }
 
         const errorText = await githubResponse.text();
-        return Response.json({
-          toast: { type: 'error', content: '触发失败' },
-          card: JSON.stringify(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null)),
-        });
+        return Response.json(buildResultCard(false, `GitHub API 返回 ${githubResponse.status}: ${errorText}`, null));
       } catch (err) {
-        return Response.json({
-          toast: { type: 'error', content: '触发失败' },
-          card: JSON.stringify(buildResultCard(false, `请求处理失败: ${err.message}`, null)),
-        });
+        return Response.json(buildResultCard(false, `请求处理失败: ${err.message}`, null));
       }
     }
 
     // Handle redeploy button click
     if (action.value && action.value.key === 'redeploy') {
-      return Response.json({
-        toast: { type: 'info', content: '请填写部署参数' },
-        card: JSON.stringify(buildDeployCard()),
-      });
+      return Response.json(buildDeployCard());
     }
 
     return new Response('ok', { status: 200 });
