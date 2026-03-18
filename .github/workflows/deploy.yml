@@ -6,6 +6,39 @@ on:
       - 'dev-v**'
       - 'test-v**'
       - 'prod-v**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      version:
+        description: '版本号（留空=自动生成时间戳，如 20260312153000）'
+        required: false
+        type: string
+        default: ''
+      services:
+        description: '部署服务（all=全部）'
+        required: false
+        type: choice
+        options:
+          - all
+          - app
+          - agent
+          - admin
+          - app+agent
+          - app+admin
+          - agent+admin
+        default: 'all'
+      branch:
+        description: '私有仓库分支（留空=默认分支）'
+        required: false
+        type: string
+        default: ''
 
 env:
   REGISTRY: ghcr.io
@@ -23,6 +56,7 @@ jobs:
       commit_sha: ${{ env.COMMIT_SHA }}
       commit_message: ${{ env.COMMIT_MESSAGE }}
       commit_time: ${{ env.COMMIT_TIME }}
+      deploy_tag: ${{ env.DEPLOY_TAG }}
     permissions:
       contents: read
       packages: write
@@ -39,74 +73,113 @@ jobs:
       # Step 2: Parse tag for environment, branch, and services
       - name: Parse tag for environment, branch, and services
         run: |
-          TAG="${{ github.ref_name }}"
-          # Extract environment prefix and set DEPLOY_ENV / DEPLOY_HOST
-          if [[ "$TAG" == dev-v* ]]; then
-            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#dev-v}"
-          elif [[ "$TAG" == test-v* ]]; then
-            echo "DEPLOY_ENV=test" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#test-v}"
-          elif [[ "$TAG" == prod-v* ]]; then
-            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
-            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
-            REMAINDER="${TAG#prod-v}"
-          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # --- Manual trigger: read from inputs ---
+            DEPLOY_ENV="${{ inputs.environment }}"
+            VERSION="${{ inputs.version }}"
+            REPO_BRANCH="${{ inputs.branch }}"
+            SERVICES_INPUT="${{ inputs.services }}"
 
-          # REMAINDER is now e.g. "1.0.0", "1.0.0+app.agent", "1.0.0+app-feature/login"
-          BUILD_APP="false"
-          BUILD_AGENT="false"
-          BUILD_ADMIN="false"
-          REPO_BRANCH=""
-
-          if [[ "$REMAINDER" == *+* ]]; then
-            # Has service selector: split on first "+"
-            VERSION_PART="${REMAINDER%%+*}"
-            SERVICES_AND_BRANCH="${REMAINDER#*+}"
-
-            # Branch is everything after the first "-" in SERVICES_AND_BRANCH
-            if [[ "$SERVICES_AND_BRANCH" == *-* ]]; then
-              SERVICES_PART="${SERVICES_AND_BRANCH%%-*}"
-              REPO_BRANCH="${SERVICES_AND_BRANCH#*-}"
-            else
-              SERVICES_PART="$SERVICES_AND_BRANCH"
+            # Auto-generate version if empty
+            if [ -z "$VERSION" ]; then
+              VERSION=$(date -u +'%Y%m%d%H%M%S')
             fi
 
-            # Parse services by splitting on "."
-            IFS='.' read -ra SVC_ARRAY <<< "$SERVICES_PART"
+            # Set DEPLOY_HOST based on environment
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+
+            # Parse services
+            BUILD_APP="false"
+            BUILD_AGENT="false"
+            BUILD_ADMIN="false"
             DISPLAY_PARTS=()
-            for svc in "${SVC_ARRAY[@]}"; do
-              case "$svc" in
-                app)   BUILD_APP="true";   DISPLAY_PARTS+=("app") ;;
-                agent) BUILD_AGENT="true"; DISPLAY_PARTS+=("agent") ;;
-                admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
-              esac
-            done
-            SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
-          else
-            # No service selector: build all (backward compatible)
-            BUILD_APP="true"
-            BUILD_AGENT="true"
-            BUILD_ADMIN="true"
-            SERVICES_DISPLAY="app, agent, admin"
 
-            # Branch: everything after the first "-" in REMAINDER
-            if [[ "$REMAINDER" == *-* ]]; then
-              REPO_BRANCH="${REMAINDER#*-}"
+            if [ "$SERVICES_INPUT" = "all" ] || [ -z "$SERVICES_INPUT" ]; then
+              BUILD_APP="true"
+              BUILD_AGENT="true"
+              BUILD_ADMIN="true"
+              SERVICES_DISPLAY="app, agent, admin"
+            else
+              IFS='+' read -ra SVC_ARRAY <<< "$SERVICES_INPUT"
+              for svc in "${SVC_ARRAY[@]}"; do
+                case "$svc" in
+                  app)   BUILD_APP="true";   DISPLAY_PARTS+=("app") ;;
+                  agent) BUILD_AGENT="true"; DISPLAY_PARTS+=("agent") ;;
+                  admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
+                esac
+              done
+              SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
             fi
+
+            # Construct a synthetic tag name for display
+            DEPLOY_TAG="${DEPLOY_ENV}-v${VERSION}"
+            IMAGE_TAG="${DEPLOY_ENV}-v${VERSION}"
+          else
+            # --- Tag trigger: parse from github.ref_name (existing logic) ---
+            TAG="${{ github.ref_name }}"
+            if [[ "$TAG" == dev-v* ]]; then
+              DEPLOY_ENV="dev"
+              REMAINDER="${TAG#dev-v}"
+            elif [[ "$TAG" == test-v* ]]; then
+              DEPLOY_ENV="test"
+              REMAINDER="${TAG#test-v}"
+            elif [[ "$TAG" == prod-v* ]]; then
+              DEPLOY_ENV="prod"
+              REMAINDER="${TAG#prod-v}"
+            fi
+
+            echo "DEPLOY_HOST=${{ secrets.DEPLOY_HOST }}" >> $GITHUB_ENV
+
+            BUILD_APP="false"
+            BUILD_AGENT="false"
+            BUILD_ADMIN="false"
+            REPO_BRANCH=""
+
+            if [[ "$REMAINDER" == *+* ]]; then
+              VERSION_PART="${REMAINDER%%+*}"
+              SERVICES_AND_BRANCH="${REMAINDER#*+}"
+
+              if [[ "$SERVICES_AND_BRANCH" == *-* ]]; then
+                SERVICES_PART="${SERVICES_AND_BRANCH%%-*}"
+                REPO_BRANCH="${SERVICES_AND_BRANCH#*-}"
+              else
+                SERVICES_PART="$SERVICES_AND_BRANCH"
+              fi
+
+              IFS='.' read -ra SVC_ARRAY <<< "$SERVICES_PART"
+              DISPLAY_PARTS=()
+              for svc in "${SVC_ARRAY[@]}"; do
+                case "$svc" in
+                  app)   BUILD_APP="true";   DISPLAY_PARTS+=("app") ;;
+                  agent) BUILD_AGENT="true"; DISPLAY_PARTS+=("agent") ;;
+                  admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
+                esac
+              done
+              SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
+            else
+              BUILD_APP="true"
+              BUILD_AGENT="true"
+              BUILD_ADMIN="true"
+              SERVICES_DISPLAY="app, agent, admin"
+
+              if [[ "$REMAINDER" == *-* ]]; then
+                REPO_BRANCH="${REMAINDER#*-}"
+              fi
+            fi
+
+            DEPLOY_TAG="$TAG"
+            # IMAGE_TAG: strip +services portion from tag for Docker compatibility
+            IMAGE_TAG=$(echo "$TAG" | sed 's/+[^-]*//' | sed 's/[^a-zA-Z0-9._-]/-/g')
           fi
 
+          echo "DEPLOY_ENV=${DEPLOY_ENV}" >> $GITHUB_ENV
           echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
           echo "BUILD_APP=${BUILD_APP}" >> $GITHUB_ENV
           echo "BUILD_AGENT=${BUILD_AGENT}" >> $GITHUB_ENV
           echo "BUILD_ADMIN=${BUILD_ADMIN}" >> $GITHUB_ENV
           echo "SERVICES_DISPLAY=${SERVICES_DISPLAY}" >> $GITHUB_ENV
-
-          # IMAGE_TAG: strip +services portion from tag for Docker compatibility
-          IMAGE_TAG=$(echo "$TAG" | sed 's/+[^-]*//' | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "DEPLOY_TAG=${DEPLOY_TAG}" >> $GITHUB_ENV
 
       # Step 3: Checkout private repository
       - name: Checkout private repository
@@ -337,7 +410,7 @@ jobs:
               sudo nginx -t && sudo systemctl reload nginx
             fi
   notify:
-    if: always() && startsWith(github.ref, 'refs/tags/')
+    if: always()
     runs-on: ubuntu-latest
     needs: build-and-deploy
     steps:
@@ -346,12 +419,13 @@ jobs:
           STATUS: ${{ needs.build-and-deploy.result }}
           SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
           ACTOR: ${{ github.actor }}
-          TAG: ${{ github.ref }}
+          DEPLOY_TAG: ${{ needs.build-and-deploy.outputs.deploy_tag }}
           COMMIT_SHA: ${{ needs.build-and-deploy.outputs.commit_sha }}
           COMMIT_MESSAGE: ${{ needs.build-and-deploy.outputs.commit_message }}
           COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
           REPOSITORY: ${{ secrets.REPOSITORY }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOY_URL: https://github.com/${{ github.repository }}/actions/workflows/deploy.yml
           LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
         run: |
           STATUS_TEXT="✅ Success"
@@ -359,7 +433,7 @@ jobs:
             STATUS_TEXT="❌ Failed"
           fi
 
-          TAG_NAME=$(echo "$TAG" | sed 's|refs/tags/||')
+          TAG_NAME="${DEPLOY_TAG}"
 
           COMMIT_URL="https://github.com/${REPOSITORY}/commit/${COMMIT_SHA}"
 
@@ -392,6 +466,15 @@ jobs:
                           },
                           "url": "${WORKFLOW_URL}",
                           "type": "default"
+                        },
+                        {
+                          "tag": "button",
+                          "text": {
+                            "tag": "lark_md",
+                            "content": "触发部署"
+                          },
+                          "url": "${DEPLOY_URL}",
+                          "type": "primary"
                         }
                       ]
                     }
