@@ -428,28 +428,21 @@ jobs:
           COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
           REPOSITORY: ${{ secrets.REPOSITORY }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          WORKER_URL: https://deploy-bot.ricex-mr.workers.dev
+          WORKER_URL: ${{ secrets.WORKER_URL }}
           NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
-        run: |
-          STATUS_TEXT="success"
-          if [ "$STATUS" != "success" ]; then
-            STATUS_TEXT="failed"
-          fi
+          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
+        run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-worker.sh
 
-          COMMIT_URL="https://github.com/${REPOSITORY}/commit/${COMMIT_SHA}"
-
-          curl -s -X POST "${WORKER_URL}/notify" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${NOTIFY_SECRET}" \
-            -d "{
-              \"status\": \"${STATUS_TEXT}\",
-              \"actor\": \"${ACTOR}\",
-              \"tag\": \"${DEPLOY_TAG}\",
-              \"services\": \"${SERVICES}\",
-              \"commit_message\": \"${COMMIT_MESSAGE}\",
-              \"commit_time\": \"${COMMIT_TIME}\",
-              \"commit_sha\": \"${COMMIT_SHA}\",
-              \"repository\": \"${REPOSITORY}\",
-              \"workflow_url\": \"${WORKFLOW_URL}\",
-              \"commit_url\": \"${COMMIT_URL}\"
-            }"
+      - name: 🔔 推送到 Lark Webhook
+        env:
+          STATUS: ${{ needs.build-and-deploy.result }}
+          SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
+          ACTOR: ${{ github.actor }}
+          DEPLOY_TAG: ${{ needs.build-and-deploy.outputs.deploy_tag }}
+          COMMIT_SHA: ${{ needs.build-and-deploy.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ needs.build-and-deploy.outputs.commit_message }}
+          COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
+          REPOSITORY: ${{ secrets.REPOSITORY }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
+        run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-lark-webhook.sh
