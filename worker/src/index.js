@@ -1,4 +1,4 @@
-import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
+import { buildDeployCard, buildNotifyCard, buildWebhookNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
 
 const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 const GITHUB_WORKFLOW = 'deploy.yml';
@@ -304,6 +304,21 @@ async function handleNotify(request, env) {
     const card = buildNotifyCard(data);
 
     await sendLarkMessage(token, env.LARK_CHAT_ID, card);
+
+    // Also send via LARK_WEBHOOK (same card but without '🚀 重新部署' button)
+    if (env.LARK_WEBHOOK) {
+      try {
+        const webhookCard = buildWebhookNotifyCard(data);
+        await fetch(env.LARK_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ msg_type: 'interactive', card: webhookCard }),
+        });
+      } catch (e) {
+        // Webhook failure should not block response — primary Open API notification already succeeded
+        console.error('LARK_WEBHOOK send failed:', e.message);
+      }
+    }
 
     return Response.json({ success: true });
   } catch (err) {

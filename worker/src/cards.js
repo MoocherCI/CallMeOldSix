@@ -59,7 +59,7 @@ export function buildDeployCard() {
 }
 
 
-export function buildNotifyCard(data) {
+function _buildBaseNotifyCard(data) {
   const {
     status = 'unknown',
     actor = '',
@@ -105,12 +105,6 @@ export function buildNotifyCard(data) {
       url: commitUrl,
     });
   }
-  buttons.push({
-    tag: 'button',
-    text: { tag: 'plain_text', content: '🚀 重新部署' },
-    type: 'primary',
-    value: { key: 'redeploy' },
-  });
 
   return {
     config: { update_multi: true },
@@ -132,6 +126,21 @@ export function buildNotifyCard(data) {
       },
     ],
   };
+}
+
+export function buildNotifyCard(data) {
+  const card = _buildBaseNotifyCard(data);
+  // Find the action element and add the '🚀 重新部署' button
+  const actionElement = card.elements.find((el) => el.tag === 'action');
+  if (actionElement) {
+    actionElement.actions.push({
+      tag: 'button',
+      text: { tag: 'plain_text', content: '🚀 重新部署' },
+      type: 'primary',
+      value: { key: 'redeploy' },
+    });
+  }
+  return card;
 }
 
 
@@ -167,4 +176,9 @@ export function buildResultCard(success, message, params) {
     },
     elements,
   };
+}
+
+
+export function buildWebhookNotifyCard(data) {
+  return _buildBaseNotifyCard(data);
 }
