@@ -417,6 +417,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-deploy
     steps:
+      - name: Checkout proxy repo
+        uses: actions/checkout@v4
+
       - name: 🔔 推送到 Lark
         env:
           STATUS: ${{ needs.build-and-deploy.result }}
@@ -430,19 +433,4 @@ jobs:
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
-          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
         run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-worker.sh
-
-      - name: 🔔 推送到 Lark Webhook
-        env:
-          STATUS: ${{ needs.build-and-deploy.result }}
-          SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
-          ACTOR: ${{ github.actor }}
-          DEPLOY_TAG: ${{ needs.build-and-deploy.outputs.deploy_tag }}
-          COMMIT_SHA: ${{ needs.build-and-deploy.outputs.commit_sha }}
-          COMMIT_MESSAGE: ${{ needs.build-and-deploy.outputs.commit_message }}
-          COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
-          REPOSITORY: ${{ secrets.REPOSITORY }}
-          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
-        run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-lark-webhook.sh
