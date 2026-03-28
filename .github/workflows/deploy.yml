@@ -433,4 +433,5 @@ jobs:
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
+          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
         run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-worker.sh
