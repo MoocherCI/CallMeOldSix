@@ -309,11 +309,24 @@ jobs:
           target: "~/cuneim/"
           strip_components: 1
 
+      # Step 7.5: Generate .env content on runner (jq is pre-installed)
+      - name: Generate .env content
+        id: gen_env
+        run: |
+          ENV_CONTENT=$(echo '${{ toJSON(secrets) }}' | jq -r '
+            ["SSH_KEY","DEPLOY_USER","GHCR_PAT","GHCR_USERNAME","DEPLOY_HOST_DEV","DEPLOY_HOST_TEST","DEPLOY_HOST_PROD","WORKER_URL","NOTIFY_SECRET","LARK_WEBHOOK","REPOSITORY","GITHUB_TOKEN"] as $exclude |
+            to_entries[] | select(.key as $k | $exclude | index($k) | not) |
+            "\(.key)=\(.value)"
+          ')
+          echo "ENV_CONTENT<<EOF" >> $GITHUB_OUTPUT
+          echo "$ENV_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       # Step 8: Deploy to server via SSH
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         env:
-          ALL_SECRETS: ${{ toJSON(secrets) }}
+          ENV_CONTENT: ${{ steps.gen_env.outputs.ENV_CONTENT }}
           GHCR_IMAGE: ${{ env.IMAGE_NAME }}
           GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
           GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
@@ -322,7 +335,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.SSH_KEY }}
-          envs: ALL_SECRETS,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,DEPLOY_ENV_VAL
+          envs: ENV_CONTENT,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,DEPLOY_ENV_VAL
           script: |
             set -e
 
@@ -338,22 +351,9 @@ jobs:
             [ -z "$OLD_AGENT_TAG" ] && OLD_AGENT_TAG="latest"
             [ -z "$OLD_ADMIN_TAG" ] && OLD_ADMIN_TAG="latest"
 
-            # Generate .env from secrets (auto-includes all GitHub Secrets except CI-only ones)
-            echo "$ALL_SECRETS" | python3 -c '
-import sys, json, os
-EXCLUDE = {
-    "SSH_KEY", "DEPLOY_USER", "GHCR_PAT", "GHCR_USERNAME",
-    "DEPLOY_HOST_DEV", "DEPLOY_HOST_TEST", "DEPLOY_HOST_PROD",
-    "WORKER_URL", "NOTIFY_SECRET", "LARK_WEBHOOK", "REPOSITORY",
-    "GITHUB_TOKEN"
-}
-data = json.load(sys.stdin)
-env_path = os.path.expanduser("~/cuneim/.env")
-with open(env_path, "w") as f:
-    for k in sorted(data):
-        if k not in EXCLUDE:
-            f.write("{}={}\n".format(k, data[k]))
-'
+            # Write .env from pre-generated content
+            echo "$ENV_CONTENT" > ~/cuneim/.env
+
             # Append non-secret env vars
             echo "GHCR_IMAGE=$GHCR_IMAGE" >> ~/cuneim/.env
             echo "GHCR_IMAGE_AGENT=$GHCR_IMAGE_AGENT" >> ~/cuneim/.env
