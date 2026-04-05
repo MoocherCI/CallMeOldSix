@@ -339,20 +339,21 @@ jobs:
             [ -z "$OLD_ADMIN_TAG" ] && OLD_ADMIN_TAG="latest"
 
             # Generate .env from secrets (auto-includes all GitHub Secrets except CI-only ones)
-            echo "$ALL_SECRETS" | python3 -c "
-import sys, json
+            echo "$ALL_SECRETS" | python3 -c '
+import sys, json, os
 EXCLUDE = {
-    'SSH_KEY', 'DEPLOY_USER', 'GHCR_PAT', 'GHCR_USERNAME',
-    'DEPLOY_HOST_DEV', 'DEPLOY_HOST_TEST', 'DEPLOY_HOST_PROD',
-    'WORKER_URL', 'NOTIFY_SECRET', 'LARK_WEBHOOK', 'REPOSITORY',
-    'GITHUB_TOKEN'
+    "SSH_KEY", "DEPLOY_USER", "GHCR_PAT", "GHCR_USERNAME",
+    "DEPLOY_HOST_DEV", "DEPLOY_HOST_TEST", "DEPLOY_HOST_PROD",
+    "WORKER_URL", "NOTIFY_SECRET", "LARK_WEBHOOK", "REPOSITORY",
+    "GITHUB_TOKEN"
 }
 data = json.load(sys.stdin)
-with open('$HOME/cuneim/.env', 'w') as f:
+env_path = os.path.expanduser("~/cuneim/.env")
+with open(env_path, "w") as f:
     for k in sorted(data):
         if k not in EXCLUDE:
-            f.write(f'{k}={data[k]}\n')
-"
+            f.write("{}={}\n".format(k, data[k]))
+'
             # Append non-secret env vars
             echo "GHCR_IMAGE=$GHCR_IMAGE" >> ~/cuneim/.env
             echo "GHCR_IMAGE_AGENT=$GHCR_IMAGE_AGENT" >> ~/cuneim/.env
