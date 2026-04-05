@@ -312,10 +312,17 @@ jobs:
       # Step 8: Deploy to server via SSH
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          GHCR_IMAGE: ${{ env.IMAGE_NAME }}
+          GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
+          GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
+          DEPLOY_ENV_VAL: ${{ env.DEPLOY_ENV }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.SSH_KEY }}
+          envs: ALL_SECRETS,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,DEPLOY_ENV_VAL
           script: |
             set -e
 
@@ -331,40 +338,26 @@ jobs:
             [ -z "$OLD_AGENT_TAG" ] && OLD_AGENT_TAG="latest"
             [ -z "$OLD_ADMIN_TAG" ] && OLD_ADMIN_TAG="latest"
 
-            # Write .env file with all secrets
-            cat > ~/cuneim/.env << 'ENVEOF'
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
-            SESSION_SECRET=${{ secrets.SESSION_SECRET }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_REDIRECT_URL=${{ secrets.GOOGLE_REDIRECT_URL }}
-            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
-            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
-            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
-            BASE_URL=${{ secrets.BASE_URL }}
-            ADMIN_SECRET=${{ secrets.ADMIN_SECRET }}
-            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            EMAIL_FROM=${{ secrets.EMAIL_FROM }}
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-            TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
-            CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-            CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}
-            GHCR_IMAGE=${{ env.IMAGE_NAME }}
-            GHCR_IMAGE_AGENT=${{ env.AGENT_IMAGE_NAME }}
-            GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
-            ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
-            ADMIN_JWT_REFRESH_SECRET=${{ secrets.ADMIN_JWT_REFRESH_SECRET }}
-            DEPLOY_ENV=${{ env.DEPLOY_ENV }}
-            TOTP_ENCRYPTION_KEY=${{ secrets.TOTP_ENCRYPTION_KEY }}
-            INTERNAL_BASE_URL=${{ secrets.INTERNAL_BASE_URL }}
-            SWAGGER_PASSWORD=${{ secrets.SWAGGER_PASSWORD }}
-            ENVEOF
-
-            # Remove leading whitespace from .env lines
-            sed -i 's/^[[:space:]]*//' ~/cuneim/.env
+            # Generate .env from secrets (auto-includes all GitHub Secrets except CI-only ones)
+            echo "$ALL_SECRETS" | python3 -c "
+import sys, json
+EXCLUDE = {
+    'SSH_KEY', 'DEPLOY_USER', 'GHCR_PAT', 'GHCR_USERNAME',
+    'DEPLOY_HOST_DEV', 'DEPLOY_HOST_TEST', 'DEPLOY_HOST_PROD',
+    'WORKER_URL', 'NOTIFY_SECRET', 'LARK_WEBHOOK', 'REPOSITORY',
+    'GITHUB_TOKEN'
+}
+data = json.load(sys.stdin)
+with open('$HOME/cuneim/.env', 'w') as f:
+    for k in sorted(data):
+        if k not in EXCLUDE:
+            f.write(f'{k}={data[k]}\n')
+"
+            # Append non-secret env vars
+            echo "GHCR_IMAGE=$GHCR_IMAGE" >> ~/cuneim/.env
+            echo "GHCR_IMAGE_AGENT=$GHCR_IMAGE_AGENT" >> ~/cuneim/.env
+            echo "GHCR_IMAGE_ADMIN=$GHCR_IMAGE_ADMIN" >> ~/cuneim/.env
+            echo "DEPLOY_ENV=$DEPLOY_ENV_VAL" >> ~/cuneim/.env
 
             # Append per-service image tags (new tag for built services, old tag for unbuilt)
             if [ "${{ env.BUILD_APP }}" = "true" ]; then echo "APP_IMAGE_TAG=${{ env.IMAGE_TAG }}" >> ~/cuneim/.env; else echo "APP_IMAGE_TAG=$OLD_APP_TAG" >> ~/cuneim/.env; fi
