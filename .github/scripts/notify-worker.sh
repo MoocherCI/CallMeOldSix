@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Worker /notify notification script
-# Required env vars: STATUS, ACTOR, DEPLOY_TAG, SERVICES, COMMIT_SHA, COMMIT_MESSAGE, COMMIT_TIME, REPOSITORY, WORKFLOW_URL, WORKER_URL, NOTIFY_SECRET, LARK_WEBHOOK
+# Required env vars: STATUS, ACTOR, DEPLOY_TAG, DEPLOY_TARGET, SERVICES, COMMIT_SHA, COMMIT_MESSAGE, COMMIT_TIME, REPOSITORY, WORKFLOW_URL, WORKER_URL, NOTIFY_SECRET, LARK_WEBHOOK
 set -euo pipefail
 
 STATUS_TEXT="success"
@@ -17,6 +17,7 @@ curl -s -X POST "${WORKER_URL}/notify" \
     \"status\": \"${STATUS_TEXT}\",
     \"actor\": \"${ACTOR}\",
     \"tag\": \"${DEPLOY_TAG}\",
+    \"target\": \"${DEPLOY_TARGET:-single}\",
     \"services\": \"${SERVICES}\",
     \"commit_message\": \"${COMMIT_MESSAGE}\",
     \"commit_time\": \"${COMMIT_TIME}\",
@@ -57,7 +58,7 @@ if [ -n "${LARK_WEBHOOK:-}" ]; then
         "tag": "div",
         "text": {
           "tag": "lark_md",
-          "content": "**发起人:** ${ACTOR}\n**Tag:** ${DEPLOY_TAG}\n**构建服务:** ${SERVICES}\n**状态:** ${STATUS_DISPLAY}\n**提交信息:** ${COMMIT_MESSAGE}\n**提交时间:** ${COMMIT_TIME}\n**提交:** [${SHORT_SHA}](${COMMIT_URL})"
+          "content": "**发起人:** ${ACTOR}\n**Tag:** ${DEPLOY_TAG}\n**目标:** ${DEPLOY_TARGET:-single}\n**构建服务:** ${SERVICES}\n**状态:** ${STATUS_DISPLAY}\n**提交信息:** ${COMMIT_MESSAGE}\n**提交时间:** ${COMMIT_TIME}\n**提交:** [${SHORT_SHA}](${COMMIT_URL})"
         }
       },
       {
