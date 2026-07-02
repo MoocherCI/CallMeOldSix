@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:${NGINX_IMAGE_TAG:-alpine}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  agent:
+    image: ghcr.io/moocherci/agent:${AGENT_IMAGE_TAG:-latest}
+    ports:
+      - "3100:3100"
+    volumes:
+      - shared-logs:/app/logs
+      - agent_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-0:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3000:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-1:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3001:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-2:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3002:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-3:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3003:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-4:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3004:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-5:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3005:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-6:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3006:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-7:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3007:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-8:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3008:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-9:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3009:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=192.168.11.12:5432
+      - REDIS_URL=192.168.11.12:6379
+      - AGENT_POOL_URL=localhost:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+volumes:
+  shared-logs:
+  nginx_logs:
+  agent_data:
+
+networks:
+  app_network:
+    driver: bridge
