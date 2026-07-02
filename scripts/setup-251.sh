@@ -7,7 +7,7 @@ set -euo pipefail
 SSH_KEY="~/.ssh/id_ed25519_ai_ci"
 SSH_HOST="91.110.182.251"
 SSH_USER="john"
-SSH_CMD="ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST}"
+SSH_CMD="ssh -i ${SSH_KEY} -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST}"
 
 echo "=== Setup: ${SSH_USER}@${SSH_HOST} ==="
 echo ""
