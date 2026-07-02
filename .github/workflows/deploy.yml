@@ -479,15 +479,27 @@ jobs:
           source: "docker-compose.252.yml"
           target: "~/cuneim/"
 
-      - name: Copy prisma files to 252
-        if: env.DEPLOY_TARGET == 'dual'
+      - name: Copy app prisma files to 252
+        if: env.BUILD_APP == 'true' && env.DEPLOY_TARGET == 'dual'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
           username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY_252 }}
-          source: "prisma/"
+          source: "user-platform/prisma/"
           target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy admin prisma files to 252
+        if: env.BUILD_ADMIN == 'true' && env.DEPLOY_TARGET == 'dual'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY_252 }}
+          source: "admin-platform/api/prisma/"
+          target: "~/cuneim/"
+          strip_components: 1
 
       - name: Copy .env.252 to 252
         if: env.DEPLOY_TARGET == 'dual'
@@ -552,7 +564,7 @@ jobs:
             docker compose up -d admin app
 
             # Run database migrations
-            docker compose exec -T --user root app npx prisma migrate deploy || true
+            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
             docker compose exec -T admin npx prisma migrate deploy || true
 
             # Admin seed (first deploy only)
@@ -630,7 +642,7 @@ jobs:
             docker compose up -d agent app
 
             # Run database migrations
-            docker compose exec -T --user root app npx prisma migrate deploy || true
+            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
 
             # Deploy nginx config
             sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/conf.d/admin.cuneim.com.conf
