@@ -38,7 +38,7 @@ services:
   admin:
     image: ghcr.io/moocherci/admin:${ADMIN_IMAGE_TAG:-latest}
     ports:
-      - "3001:3000"
+      - "3006:3000"
     volumes:
       - shared-logs:/app/logs
     env_file:
