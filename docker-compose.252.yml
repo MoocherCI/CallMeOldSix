@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:${POSTGRES_IMAGE_TAG:-16-alpine}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=20GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  redis:
+    image: redis:${REDIS_IMAGE_TAG:-7-alpine}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  admin:
+    image: ghcr.io/moocherci/admin:${ADMIN_IMAGE_TAG:-latest}
+    ports:
+      - "3001:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-0:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3000:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-1:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3001:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-2:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3002:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-3:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3003:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-4:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3004:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  app-5:
+    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
+    ports:
+      - "3005:3000"
+    volumes:
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=localhost:5432
+      - REDIS_URL=localhost:6379
+      - AGENT_POOL_URL=192.168.11.11:3100
+    restart: unless-stopped
+    networks:
+      - app_network
+
+volumes:
+  shared-logs:
+  pgdata:
+  redis_data:
+
+networks:
+  app_network:
+    driver: bridge
