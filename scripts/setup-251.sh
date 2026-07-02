@@ -69,7 +69,7 @@ fi
 echo ""
 
 # --- ufw ---
-echo "[6/6] Installing and configuring ufw..."
+echo "Installing and configuring ufw..."
 if command -v ufw &>/dev/null; then
   echo "  ufw is already installed."
 else
@@ -84,6 +84,28 @@ sudo ufw allow proto tcp from 192.168.11.0/24 to any port 443
 sudo ufw allow proto tcp from 192.168.11.0/24 to any port 3100
 
 echo "  ufw rules configured."
+echo ""
+
+# --- certbot wildcard certificate ---
+echo "[6/6] certbot wildcard certificate (*.cuneim.com)..."
+echo "  The certbot certonly command for obtaining a Let's Encrypt"
+echo "  wildcard certificate (*.cuneim.com) via Cloudflare DNS challenge."
+echo ""
+echo "  Prerequisites:"
+echo "    1. Place Cloudflare API credentials at /root/.secrets/cloudflare.ini"
+echo "       Format: dns_cloudflare_api_token = <your_api_token>"
+echo "    2. Ensure the file is readable only by root: chmod 600 /root/.secrets/cloudflare.ini"
+echo ""
+echo "  Command (run manually after credentials are in place):"
+echo "    certbot certonly \\"
+echo "      --dns-cloudflare \\"
+echo "      --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \\"
+echo "      -d cuneim.com,*.cuneim.com \\"
+echo "      --preferred-challenges dns-01 \\"
+echo "      --dns-cloudflare-propagation-seconds 30"
+echo ""
+echo "  NOTE: This command is NOT auto-executed by this script."
+echo "        Run it manually after placing credentials."
 echo ""
 
 # --- Directories ---
