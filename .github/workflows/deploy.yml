@@ -645,7 +645,7 @@ jobs:
             docker compose exec -T --user root app-0 npx prisma migrate deploy || true
 
             # Deploy nginx config
-            sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/conf.d/admin.cuneim.com.conf
+            sudo cp ~/cuneim/nginx/*.conf /etc/nginx/conf.d/
             sudo nginx -t && sudo systemctl reload nginx
 
   notify:
