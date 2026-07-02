@@ -30,9 +30,9 @@ echo ""
 
 # Pipe pg_dump from the old machine directly to pg_restore on 252.
 # No intermediate file is written to disk (streamed through SSH).
-ssh -i "${SSH_KEY_OLD}" "${SSH_USER_OLD}@${SSH_HOST_OLD}" \
+ssh -i "${SSH_KEY_OLD}" -o StrictHostKeyChecking=accept-new "${SSH_USER_OLD}@${SSH_HOST_OLD}" \
   "pg_dump -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${DB_NAME} -Fc" \
-  | ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" \
+  | ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${SSH_HOST}" \
   "pg_restore --clean --if-exists -j 4 -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${DB_NAME}"
 
 echo ""
