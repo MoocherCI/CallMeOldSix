@@ -1,4 +1,4 @@
-import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
+import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS, TARGET_OPTIONS } from './cards.js';
 
 const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 const GITHUB_WORKFLOW = 'deploy.yml';
@@ -117,7 +117,7 @@ async function handleTestCallback(env) {
     steps.github_token = hasGithubToken ? 'present' : 'EMPTY — deploy will fail, run: cd worker && npx wrangler secret put GITHUB_TOKEN';
 
     // Step 2: Simulate form values (same as a real button click)
-    const formValue = { environment: 'dev', services: 'all', version: '', branch: '' };
+    const formValue = { environment: 'dev', services: 'all', target: 'single', version: '', branch: '' };
     steps.form_value = formValue;
 
     // Step 3: Validate environment
@@ -149,7 +149,7 @@ async function handleTestCallback(env) {
         },
         body: JSON.stringify({
           ref: 'main',
-          inputs: { environment: 'dev', version: '', services: 'all', branch: '' },
+          inputs: { environment: 'dev', version: '', services: 'all', branch: '', target: 'single' },
         }),
       }
     );
@@ -171,7 +171,7 @@ async function handleTestCallback(env) {
 // ─── Debug Callback Response ──────────────────────────────────────────────────
 
 async function handleDebugCallbackResponse(env) {
-  const successCard = buildResultCard(true, '已触发部署', { environment: 'dev', services: 'all', version: '', branch: '' });
+  const successCard = buildResultCard(true, '已触发部署', { environment: 'dev', services: 'all', version: '', branch: '', target: 'single' });
   const errorCard = buildResultCard(false, 'GitHub API 返回 403: ...', null);
   const redeployCard = buildDeployCard();
   return Response.json({
@@ -230,6 +230,7 @@ async function handleCallback(request, env) {
       const formValue = action.form_value || {};
       const environment = formValue.environment;
       const services = formValue.services || 'all';
+      const target = formValue.target || 'single';
       const version = formValue.version || '';
       const branch = formValue.branch || '';
 
@@ -257,7 +258,7 @@ async function handleCallback(request, env) {
             },
             body: JSON.stringify({
               ref: 'main',
-              inputs: { environment, version, services, branch },
+              inputs: { environment, version, services, branch, target },
             }),
           }
         );
@@ -265,7 +266,7 @@ async function handleCallback(request, env) {
         console.log('[callback] GitHub API response status:', githubResponse.status);
 
         if (githubResponse.status === 204) {
-          const params = { environment, services, version, branch };
+          const params = { environment, services, version, branch, target };
           return Response.json(buildResultCard(true, '已触发部署', params));
         }
 
