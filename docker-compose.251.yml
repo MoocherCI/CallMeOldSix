@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   nginx:
     image: nginx:${NGINX_IMAGE_TAG:-alpine}
@@ -23,10 +21,6 @@ services:
       - agent_data:/app/data
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -39,10 +33,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -55,10 +45,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -71,10 +57,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -87,10 +69,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -103,10 +81,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -119,10 +93,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -135,10 +105,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -151,10 +117,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -167,10 +129,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
@@ -183,10 +141,6 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=192.168.11.12:5432
-      - REDIS_URL=192.168.11.12:6379
-      - AGENT_POOL_URL=localhost:3100
     restart: unless-stopped
     networks:
       - app_network
