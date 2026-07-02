@@ -2,6 +2,7 @@
 export const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 export const ENVIRONMENT_OPTIONS = ['dev', 'test', 'prod'];
 export const SERVICE_OPTIONS = ['all', 'app', 'agent', 'admin', 'app+agent', 'app+admin', 'agent+admin'];
+export const TARGET_OPTIONS = ['single', 'dual'];
 
 export function buildDeployCard() {
   return {
@@ -35,6 +36,16 @@ export function buildDeployCard() {
             })),
           },
           {
+            tag: 'select_static',
+            name: 'target',
+            placeholder: { tag: 'plain_text', content: '选择部署目标' },
+            initial_option: 'single',
+            options: [
+              { text: { tag: 'plain_text', content: '🏠 单机 (alex-ai-dev)' }, value: 'single' },
+              { text: { tag: 'plain_text', content: '⚡ 双机 (251+252)' }, value: 'dual' },
+            ],
+          },
+          {
             tag: 'input',
             name: 'version',
             placeholder: { tag: 'plain_text', content: '留空=自动生成时间戳' },
@@ -65,6 +76,7 @@ export function buildNotifyCard(data) {
     actor = '',
     tag = '',
     services = '',
+    target = '',
     commit_message = '',
     commit_time = '',
     commit_sha = '',
@@ -80,10 +92,15 @@ export function buildNotifyCard(data) {
     `**发起人:** ${actor}`,
     `**Tag:** ${tag}`,
     `**构建服务:** ${services}`,
-    `**状态:** ${statusText}`,
+  ];
+  if (target === 'dual') {
+    mdLines.push('**部署目标:** 双机 (251+252)');
+  }
+  mdLines.push(`**状态:** ${statusText}`);
+  mdLines.push(
     `**提交信息:** ${commit_message}`,
     `**提交时间:** ${commit_time}`,
-  ];
+  );
   if (commitUrl) {
     mdLines.push(`**提交:** [${commit_sha.substring(0, 7)}](${commitUrl})`);
   }
@@ -150,6 +167,7 @@ export function buildResultCard(success, message, params) {
     const paramLines = [`**环境:** ${params.environment}`, `**服务:** ${params.services}`];
     if (params.version) paramLines.push(`**版本:** ${params.version}`);
     if (params.branch) paramLines.push(`**分支:** ${params.branch}`);
+    if (params.target === 'dual') paramLines.push('**目标:** 双机 (251+252)');
     elements.push({
       tag: 'div',
       text: {
