@@ -9,10 +9,27 @@ services:
       - .env
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    mem_limit: 50g
     command:
       - postgres
       - -c
-      - shared_buffers=20GB
+      - shared_buffers=16GB
+      - -c
+      - effective_cache_size=48GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=2GB
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - wal_buffers=64MB
+      - -c
+      - max_parallel_workers=4
+      - -c
+      - max_parallel_workers_per_gather=2
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
@@ -28,7 +45,8 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    mem_limit: 6g
+    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     networks:
       - app_network
