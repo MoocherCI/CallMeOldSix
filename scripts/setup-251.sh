@@ -143,6 +143,7 @@ echo ""
 # --- Firewall defaults ---
 echo "Setting firewall defaults and enabling ufw..."
 sudo ufw default deny incoming
+sudo ufw allow ssh
 sudo ufw --force enable
 echo "  ufw enabled with default deny incoming."
 echo ""
