@@ -14,5 +14,5 @@ node_modules/
 __pycache__/
 
 # Session metadata (managed by app)
-.cuneim/
-.cuneim/targets.json
+.cuneim/*
+!.cuneim/targets.json

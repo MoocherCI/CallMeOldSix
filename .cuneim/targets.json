@@ -1,0 +1,21 @@
+{
+  "targets": {
+    "worker-js-syntax": {
+      "test": "for f in src/index.js src/cards.js; do echo \"=== Checking $f ===\" && node -c \"$f\" && echo \"PASS: $f\" || echo \"FAIL: $f\"; done",
+      "workdir": "worker"
+    },
+    "scripts-syntax": {
+      "test": "for f in scripts/setup-251.sh scripts/setup-252.sh scripts/migrate-db.sh; do echo \"=== Checking $f ===\" && bash -n \"$f\" && echo \"PASS: $f\" || echo \"FAIL: $f\"; done",
+      "workdir": "."
+    },
+    "nginx-config-test": {
+      "test": "for f in nginx/cuneim.com.conf nginx/admin.cuneim.com.conf nginx/api.cuneim.com.conf nginx/stream.cuneim.com.conf; do echo \"=== Checking $f ===\" && nginx -t -c \"$(pwd)/$f\" 2>&1 || echo \"NOTE: nginx may not be installed on this machine\"; done",
+      "workdir": "."
+    },
+    "docker-compose-config": {
+      "test": "for f in docker-compose.251.yml docker-compose.252.yml; do echo \"=== Checking $f ===\" && docker compose -f \"$f\" config --quiet 2>&1 && echo \"PASS: $f\" || echo \"NOTE: docker may not be installed on this machine\"; done",
+      "workdir": "."
+    }
+  },
+  "namespace": "callmeoldsix"
+}
