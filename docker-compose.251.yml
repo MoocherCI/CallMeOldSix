@@ -15,7 +15,7 @@ services:
   agent:
     image: ghcr.io/moocherci/agent:${AGENT_IMAGE_TAG:-latest}
     ports:
-      - "3100:3100"
+      - "3100:3000"
     volumes:
       - shared-logs:/app/logs
       - agent_data:/app/data
