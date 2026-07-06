@@ -1,6 +1,6 @@
 // Shared constants
 export const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
-export const ENVIRONMENT_OPTIONS = ['dev', 'test', 'prod'];
+export const ENVIRONMENT_OPTIONS = ['dev', 'test', 'next', 'prod'];
 export const SERVICE_OPTIONS = ['all', 'app', 'agent', 'admin', 'app+agent', 'app+admin', 'agent+admin'];
 export const TARGET_OPTIONS = ['single', 'dual'];
 

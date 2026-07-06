@@ -5,6 +5,7 @@ on:
     tags:
       - 'dev-v**'
       - 'test-v**'
+      - 'next-v**'
       - 'prod-v**'
   workflow_dispatch:
     inputs:
@@ -15,6 +16,7 @@ on:
         options:
           - dev
           - test
+          - next
           - prod
       version:
         description: '版本号（留空=自动生成时间戳，如 20260312153000）'
@@ -137,6 +139,9 @@ jobs:
             elif [[ "$TAG" == test-v* ]]; then
               DEPLOY_ENV="test"
               REMAINDER="${TAG#test-v}"
+            elif [[ "$TAG" == next-v* ]]; then
+              DEPLOY_ENV="next"
+              REMAINDER="${TAG#next-v}"
             elif [[ "$TAG" == prod-v* ]]; then
               DEPLOY_ENV="prod"
               REMAINDER="${TAG#prod-v}"
@@ -196,6 +201,7 @@ jobs:
           echo "SERVICES_DISPLAY=${SERVICES_DISPLAY}" >> $GITHUB_ENV
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
           echo "DEPLOY_TAG=${DEPLOY_TAG}" >> $GITHUB_ENV
+          [ "$DEPLOY_ENV" = "next" ] && DEPLOY_TARGET="dual"
           echo "DEPLOY_TARGET=${DEPLOY_TARGET}" >> $GITHUB_ENV
 
       # Step 3: Checkout private repository
