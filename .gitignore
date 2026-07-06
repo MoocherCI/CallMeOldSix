@@ -15,4 +15,6 @@ __pycache__/
 
 # Session metadata (managed by app)
 .cuneim/*
+*/.cuneim/*
+!*/.cuneim/targets.json
 !.cuneim/targets.json
