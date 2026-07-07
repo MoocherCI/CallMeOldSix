@@ -12,6 +12,13 @@ export function buildDeployCard() {
     },
     elements: [
       {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: 'next 环境自动部署到双机(251+252)，其他环境部署到单机',
+        },
+      },
+      {
         tag: 'form',
         name: 'deploy_form',
         elements: [
@@ -23,13 +30,6 @@ export function buildDeployCard() {
               text: { tag: 'plain_text', content: v },
               value: v,
             })),
-          },
-          {
-            tag: 'div',
-            text: {
-              tag: 'lark_md',
-              content: 'next 环境自动部署到双机(251+252)，其他环境部署到单机',
-            },
           },
           {
             tag: 'select_static',
