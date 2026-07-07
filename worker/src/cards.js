@@ -2,7 +2,6 @@
 export const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 export const ENVIRONMENT_OPTIONS = ['dev', 'test', 'next', 'prod'];
 export const SERVICE_OPTIONS = ['all', 'app', 'agent', 'admin', 'app+agent', 'app+admin', 'agent+admin'];
-export const TARGET_OPTIONS = ['single', 'dual'];
 
 export function buildDeployCard() {
   return {
@@ -26,6 +25,13 @@ export function buildDeployCard() {
             })),
           },
           {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: 'next 环境自动部署到双机(251+252)，其他环境部署到单机',
+            },
+          },
+          {
             tag: 'select_static',
             name: 'services',
             placeholder: { tag: 'plain_text', content: '选择部署服务' },
@@ -34,16 +40,6 @@ export function buildDeployCard() {
               text: { tag: 'plain_text', content: v },
               value: v,
             })),
-          },
-          {
-            tag: 'select_static',
-            name: 'target',
-            placeholder: { tag: 'plain_text', content: '选择部署目标' },
-            initial_option: 'single',
-            options: [
-              { text: { tag: 'plain_text', content: '🏠 单机 (alex-ai-dev)' }, value: 'single' },
-              { text: { tag: 'plain_text', content: '⚡ 双机 (251+252)' }, value: 'dual' },
-            ],
           },
           {
             tag: 'input',
