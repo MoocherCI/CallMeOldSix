@@ -242,12 +242,28 @@ jobs:
             bash prisma-shared/build-schema.sh admin-platform/api/prisma/base.prisma admin-platform/api/prisma/schema.prisma
           fi
 
+      - name: Verify Docker build context inputs
+        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
+        run: |
+          test -d packages/shared
+          test -d prisma-shared
+          if [ "${{ env.BUILD_APP }}" = "true" ]; then
+            test -f user-platform/package.json
+            test -f user-platform/Dockerfile
+            test -f user-platform/prisma/schema.prisma
+          fi
+          if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
+            test -f admin-platform/api/package.json
+            test -f admin-platform/api/Dockerfile
+            test -f admin-platform/api/prisma/schema.prisma
+          fi          
+
       # Step 6: Build and push Docker image
       - name: Build and push Docker image
         if: env.BUILD_APP == 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./user-platform
+          context: ${{ github.workspace }}
           file: ./user-platform/Dockerfile
           push: true
           tags: |
@@ -278,7 +294,7 @@ jobs:
         if: env.BUILD_ADMIN == 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./admin-platform
+          context: ${{ github.workspace }}
           file: ./admin-platform/api/Dockerfile
           push: true
           tags: |
