@@ -496,7 +496,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
           source: "docker-compose.252.yml"
           target: "~/cuneim/"
@@ -506,7 +506,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
           source: "user-platform/prisma/"
           target: "~/cuneim/"
@@ -517,7 +517,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
           source: "admin-platform/api/prisma/"
           target: "~/cuneim/"
@@ -528,7 +528,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
           source: ".env.252"
           target: "~/cuneim/"
@@ -546,7 +546,7 @@ jobs:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
           envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
           script: |
@@ -600,7 +600,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
           key: ${{ secrets.SSH_KEY }}
           source: "docker-compose.251.yml"
           target: "~/cuneim/"
@@ -610,7 +610,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
           key: ${{ secrets.SSH_KEY }}
           source: "nginx/"
           target: "~/cuneim/"
@@ -620,7 +620,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
           key: ${{ secrets.SSH_KEY }}
           source: ".env.251"
           target: "~/cuneim/"
@@ -638,7 +638,7 @@ jobs:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
           key: ${{ secrets.SSH_KEY }}
           envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
           script: |
