@@ -1,4 +1,4 @@
-import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS, TARGET_OPTIONS } from './cards.js';
+import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
 
 const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
 const GITHUB_WORKFLOW = 'deploy.yml';
@@ -117,7 +117,9 @@ async function handleTestCallback(env) {
     steps.github_token = hasGithubToken ? 'present' : 'EMPTY — deploy will fail, run: cd worker && npx wrangler secret put GITHUB_TOKEN';
 
     // Step 2: Simulate form values (same as a real button click)
-    const formValue = { environment: 'dev', services: 'all', target: 'single', version: '', branch: '' };
+    const testEnv = 'dev';
+    const target = (testEnv === 'next') ? 'dual' : 'single';
+    const formValue = { environment: testEnv, services: 'all', version: '', branch: '' };
     steps.form_value = formValue;
 
     // Step 3: Validate environment
@@ -149,7 +151,7 @@ async function handleTestCallback(env) {
         },
         body: JSON.stringify({
           ref: 'main',
-          inputs: { environment: 'dev', version: '', services: 'all', branch: '', target: 'single' },
+          inputs: { environment: testEnv, version: '', services: 'all', branch: '', target },
         }),
       }
     );
@@ -230,7 +232,7 @@ async function handleCallback(request, env) {
       const formValue = action.form_value || {};
       const environment = formValue.environment;
       const services = formValue.services || 'all';
-      const target = formValue.target || 'single';
+      const target = (environment === 'next') ? 'dual' : 'single';
       const version = formValue.version || '';
       const branch = formValue.branch || '';
 
