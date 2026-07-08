@@ -80,7 +80,7 @@ jobs:
         run: |
           mkdir -p /tmp/proxy-deploy/
           cp docker-compose.251.yml docker-compose.252.yml /tmp/proxy-deploy/
-          cp -r nginx/ /tmp/proxy-deploy/
+          cp -r nginx /tmp/proxy-deploy/
 
       - name: Configure git for private repo access
         run: bash ${GITHUB_WORKSPACE}/.github/scripts/gitconfig.sh
