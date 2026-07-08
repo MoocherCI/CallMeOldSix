@@ -4,16 +4,16 @@
 set -euo pipefail
 
 # === SSH Configuration ===
-SSH_KEY="~/.ssh/[REDACTED]"
-SSH_HOST="[REDACTED]"
-SSH_USER="[REDACTED]"
-SSH_CMD="ssh -i ${SSH_KEY} -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST}"
+SSH_KEY="${SSH_KEY_PATH}"
+SSH_HOST="${DEPLOY_HOST_252}"
+SSH_USER="${DEPLOY_USER}"
+SSH_CMD="ssh -i ${SSH_KEY} -o StrictHostKeyChecking=accept-new ${SSH_USER}@${SSH_HOST} 'INTERNAL_SUBNET=${INTERNAL_SUBNET} bash -s'"
 
 echo "=== Setup: ${SSH_USER}@${SSH_HOST} ==="
 echo ""
 
 # All remote work runs in a single session for efficiency.
-$SSH_CMD 'bash -s' << 'REMOTE_EOF'
+$SSH_CMD << 'REMOTE_EOF'
 set -euo pipefail
 
 echo "[1/4] Updating package cache..."
@@ -58,10 +58,10 @@ else
 fi
 
 # Allow SSH and service ports from VPN subnet.
-sudo ufw allow proto tcp from [REDACTED] to any port 22
-sudo ufw allow proto tcp from [REDACTED] to any port 5432
-sudo ufw allow proto tcp from [REDACTED] to any port 6379
-sudo ufw allow proto tcp from [REDACTED] to any port 3000:3005
+sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 22
+sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 5432
+sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 6379
+sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 3000:3005
 
 echo "  ufw rules configured."
 echo ""
