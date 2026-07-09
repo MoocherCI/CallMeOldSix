@@ -487,8 +487,8 @@ jobs:
           {
             echo "$ENV_CONTENT"
             echo "$NON_SECRET"
-            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@[REDACTED]:5432/cuneim"
-            echo "REDIS_URL=redis://[REDACTED]:6379"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim"
+            echo "REDIS_URL=redis://${{ secrets.DEPLOY_HOST_252 }}:6379"
             echo "AGENT_POOL_URL=http://localhost:3100"
           } > .env.251
 
@@ -496,9 +496,9 @@ jobs:
           {
             echo "$ENV_CONTENT"
             echo "$NON_SECRET"
-            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/cuneim"
-            echo "REDIS_URL=redis://localhost:6379"
-            echo "AGENT_POOL_URL=http://192.168.11.11:3100"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim"
+            echo "REDIS_URL=redis://redis:6379"
+            echo "AGENT_POOL_URL=http://${{ secrets.DEPLOY_HOST_251 }}:3100"
           } > .env.252
 
       # Dual Step 1: SCP to 252 (data server)
