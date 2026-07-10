@@ -41,7 +41,19 @@ on:
       commit_time:
         description: 'Commit timestamp'
         value: ${{ jobs.build.outputs.commit_time }}
-    secrets: inherit
+    secrets:
+      ED25519_KEY:
+        required: true
+      REPOSITORY:
+        required: true
+      GHCR_USERNAME:
+        required: true
+      GHCR_PAT:
+        required: true
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:
+        required: true
+      NEXT_PUBLIC_APP_URL:
+        required: true
 
 jobs:
   build:
