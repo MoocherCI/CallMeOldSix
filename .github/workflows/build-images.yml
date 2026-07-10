@@ -1,0 +1,174 @@
+name: 'Build Images'
+
+on:
+  workflow_call:
+    inputs:
+      build_app:
+        required: true
+        type: string
+      build_agent:
+        required: true
+        type: string
+      build_admin:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      registry:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+      agent_image_name:
+        required: true
+        type: string
+      admin_image_name:
+        required: true
+        type: string
+      repo_branch:
+        required: false
+        type: string
+        default: ''
+    outputs:
+      commit_sha:
+        description: 'SHA of the deployed commit'
+        value: ${{ jobs.build.outputs.commit_sha }}
+      commit_message:
+        description: 'Commit message'
+        value: ${{ jobs.build.outputs.commit_message }}
+      commit_time:
+        description: 'Commit timestamp'
+        value: ${{ jobs.build.outputs.commit_time }}
+    secrets: inherit
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      commit_sha: ${{ env.COMMIT_SHA }}
+      commit_message: ${{ env.COMMIT_MESSAGE }}
+      commit_time: ${{ env.COMMIT_TIME }}
+    steps:
+      # Step 1: Checkout proxy repo (for scripts) and configure SSH
+      - name: Checkout proxy repo
+        uses: actions/checkout@v4
+
+      - name: Backup proxy repo deploy files
+        run: |
+          mkdir -p /tmp/proxy-deploy/
+          cp docker-compose.251.yml docker-compose.252.yml /tmp/proxy-deploy/
+          cp -r nginx /tmp/proxy-deploy/
+
+      - name: Configure git for private repo access
+        run: bash ${GITHUB_WORKSPACE}/.github/scripts/gitconfig.sh
+        env:
+          ED25519_KEY: ${{ secrets.ED25519_KEY }}
+
+      # Step 2: Checkout private repository
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.REPOSITORY }}
+          ssh-key: ${{ secrets.ED25519_KEY }}
+          ref: ${{ inputs.repo_branch }}
+
+      - name: Restore proxy repo deploy files
+        run: |
+          cp /tmp/proxy-deploy/docker-compose.251.yml /tmp/proxy-deploy/docker-compose.252.yml .
+          cp -r /tmp/proxy-deploy/nginx .
+
+      - name: Extract commit info from private repo
+        run: |
+          echo "COMMIT_SHA=$(git log -1 --pretty=format:'%H')" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')" >> $GITHUB_ENV
+          echo "COMMIT_TIME=$(git log -1 --pretty=format:'%cI')" >> $GITHUB_ENV
+
+      # Step 3: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 4: Login to GHCR
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      # Step 4.5: Generate Prisma schemas from shared models
+      - name: Generate Prisma schemas
+        if: inputs.build_app == 'true' || inputs.build_admin == 'true'
+        run: |
+          chmod +x prisma-shared/build-schema.sh
+          if [ "${{ inputs.build_app }}" = "true" ]; then
+            bash prisma-shared/build-schema.sh user-platform/prisma/base.prisma user-platform/prisma/schema.prisma
+          fi
+          if [ "${{ inputs.build_admin }}" = "true" ]; then
+            bash prisma-shared/build-schema.sh admin-platform/api/prisma/base.prisma admin-platform/api/prisma/schema.prisma
+          fi
+
+      - name: Verify Docker build context inputs
+        if: inputs.build_app == 'true' || inputs.build_admin == 'true'
+        run: |
+          test -d packages/shared
+          test -d prisma-shared
+          if [ "${{ inputs.build_app }}" = "true" ]; then
+            test -f user-platform/package.json
+            test -f user-platform/Dockerfile
+            test -f user-platform/prisma/schema.prisma
+          fi
+          if [ "${{ inputs.build_admin }}" = "true" ]; then
+            test -f admin-platform/api/package.json
+            test -f admin-platform/api/Dockerfile
+            test -f admin-platform/api/prisma/schema.prisma
+          fi
+
+      # Step 5: Build and push Docker image
+      - name: Build and push Docker image
+        if: inputs.build_app == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}
+          file: ./user-platform/Dockerfile
+          push: true
+          tags: |
+            ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+            ${{ inputs.registry }}/${{ inputs.image_name }}:latest
+          build-args: |
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 5.5: Build and push Agent Docker image
+      - name: Build and push Agent Docker image
+        if: inputs.build_agent == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile
+          push: true
+          tags: |
+            ${{ inputs.registry }}/${{ inputs.agent_image_name }}:${{ inputs.image_tag }}
+            ${{ inputs.registry }}/${{ inputs.agent_image_name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 5.6: Build and push Admin Docker image
+      - name: Build and push Admin Docker image
+        if: inputs.build_admin == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ github.workspace }}
+          file: ./admin-platform/api/Dockerfile
+          push: true
+          tags: |
+            ${{ inputs.registry }}/${{ inputs.admin_image_name }}:${{ inputs.image_tag }}
+            ${{ inputs.registry }}/${{ inputs.admin_image_name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

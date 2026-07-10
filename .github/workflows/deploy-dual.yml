@@ -1,0 +1,337 @@
+name: 'Deploy Dual Machine'
+
+on:
+  push:
+    tags:
+      - 'next-v**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境'
+        required: true
+        type: choice
+        options:
+          - next
+      version:
+        description: '版本号（留空=自动生成时间戳，如 20260312153000）'
+        required: false
+        type: string
+        default: ''
+      services:
+        description: '部署服务（all=全部）'
+        required: false
+        type: choice
+        options:
+          - all
+          - app
+          - agent
+          - admin
+          - app+agent
+          - app+admin
+          - agent+admin
+        default: 'all'
+      branch:
+        description: '私有仓库分支（留空=默认分支）'
+        required: false
+        type: string
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: moocherci/user-platform
+  AGENT_IMAGE_NAME: moocherci/agent
+  ADMIN_IMAGE_NAME: moocherci/admin
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      services_display: ${{ env.SERVICES_DISPLAY }}
+      deploy_status: ${{ job.status }}
+      repo_branch: ${{ env.REPO_BRANCH }}
+      commit_sha: ${{ env.COMMIT_SHA }}
+      commit_message: ${{ env.COMMIT_MESSAGE }}
+      commit_time: ${{ env.COMMIT_TIME }}
+      deploy_tag: ${{ env.DEPLOY_TAG }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Step 1: Checkout proxy repo (for scripts and parse-tag)
+      - name: Checkout proxy repo
+        uses: actions/checkout@v4
+
+      # Step 2: Parse tag for environment, branch, and services
+      - name: Parse tag for environment, branch, and services
+        run: |
+          eval "$(bash .github/scripts/parse-tag.sh)"
+          echo "DEPLOY_ENV=${DEPLOY_ENV}" >> $GITHUB_ENV
+          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
+          echo "BUILD_APP=${BUILD_APP}" >> $GITHUB_ENV
+          echo "BUILD_AGENT=${BUILD_AGENT}" >> $GITHUB_ENV
+          echo "BUILD_ADMIN=${BUILD_ADMIN}" >> $GITHUB_ENV
+          echo "SERVICES_DISPLAY=${SERVICES_DISPLAY}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "DEPLOY_TAG=${DEPLOY_TAG}" >> $GITHUB_ENV
+
+      # Step 3: Build images via reusable workflow
+      - name: Build images
+        id: build_images
+        uses: ./.github/workflows/build-images.yml
+        with:
+          build_app: ${{ env.BUILD_APP }}
+          build_agent: ${{ env.BUILD_AGENT }}
+          build_admin: ${{ env.BUILD_ADMIN }}
+          image_tag: ${{ env.IMAGE_TAG }}
+          registry: ${{ env.REGISTRY }}
+          image_name: ${{ env.IMAGE_NAME }}
+          agent_image_name: ${{ env.AGENT_IMAGE_NAME }}
+          admin_image_name: ${{ env.ADMIN_IMAGE_NAME }}
+          repo_branch: ${{ env.REPO_BRANCH }}
+        secrets: inherit
+
+      - name: Set commit info from build
+        run: |
+          echo "COMMIT_SHA=${{ steps.build_images.outputs.commit_sha }}" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE=${{ steps.build_images.outputs.commit_message }}" >> $GITHUB_ENV
+          echo "COMMIT_TIME=${{ steps.build_images.outputs.commit_time }}" >> $GITHUB_ENV
+
+      # ============================================================
+      # Dual-machine deploy path
+      # ============================================================
+
+      # Dual Step 0: Generate .env.251 and .env.252
+      - name: Generate dual .env files
+        id: gen_dual_env
+        run: |
+          # Generate common secret env content using same whitelist as single path
+          ENV_CONTENT=$(echo '${{ toJSON(secrets) }}' | jq -r '
+            ["POSTGRES_PASSWORD","JWT_SECRET","JWT_REFRESH_SECRET","SESSION_SECRET","GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET","GOOGLE_REDIRECT_URL","STRIPE_SECRET_KEY","NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY","STRIPE_WEBHOOK_SECRET","BASE_URL","ADMIN_SECRET","NEXT_PUBLIC_APP_URL","RESEND_API_KEY","EMAIL_FROM","OPENROUTER_API_KEY","TAVILY_API_KEY","CLOUDFLARE_ACCOUNT_ID","CLOUDFLARE_API_TOKEN","ADMIN_JWT_SECRET","ADMIN_JWT_REFRESH_SECRET","TOTP_ENCRYPTION_KEY","INTERNAL_BASE_URL","SWAGGER_PASSWORD","STREAM_JWT_SECRET","STREAM_BASE_URL"] as $include |
+            to_entries[] | select(.key as $k | $include | index($k)) |
+            "\(.key)=\(.value)"
+          ')
+
+          # Non-secret env vars shared by both machines
+          NON_SECRET="GHCR_IMAGE=${{ env.IMAGE_NAME }}
+          GHCR_IMAGE_AGENT=${{ env.AGENT_IMAGE_NAME }}
+          GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
+          DEPLOY_ENV=${{ env.DEPLOY_ENV }}
+          APP_IMAGE_TAG=${{ env.IMAGE_TAG }}
+          AGENT_IMAGE_TAG=${{ env.IMAGE_TAG }}
+          ADMIN_IMAGE_TAG=${{ env.IMAGE_TAG }}"
+
+          # .env.251 — app server: DB/Redis on 252, agent pool local
+          {
+            echo "$ENV_CONTENT"
+            echo "$NON_SECRET"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim"
+            echo "REDIS_URL=redis://${{ secrets.DEPLOY_HOST_252 }}:6379"
+            echo "AGENT_POOL_URL=http://localhost:3100"
+          } > .env.251
+
+          # .env.252 — data server: DB/Redis local, agent pool on 251
+          {
+            echo "$ENV_CONTENT"
+            echo "$NON_SECRET"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim"
+            echo "REDIS_URL=redis://redis:6379"
+            echo "AGENT_POOL_URL=http://${{ secrets.DEPLOY_HOST_251 }}:3100"
+          } > .env.252
+
+      # Dual Step 1: SCP to 252 (data server)
+      - name: Copy compose file to 252
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "docker-compose.252.yml"
+          target: "~/cuneim/"
+
+      - name: Copy app prisma files to 252
+        if: env.BUILD_APP == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "user-platform/prisma/"
+          target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy admin prisma files to 252
+        if: env.BUILD_ADMIN == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "admin-platform/api/prisma/"
+          target: "~/cuneim/"
+          strip_components: 1
+
+      - name: Copy .env.252 to 252
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: ".env.252"
+          target: "~/cuneim/"
+
+      # Dual Step 2: SSH deploy to 252 (data server — postgres, redis, admin, app)
+      - name: Deploy to 252 (data server)
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_IMAGE: ${{ env.IMAGE_NAME }}
+          GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
+          GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST_252 }}
+          username: ${{ secrets.DEPLOY_USER_252 }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
+          script: |
+            set -e
+
+            # Create deployment directories
+            mkdir -p ~/cuneim
+            mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
+
+            # Activate machine-specific files
+            cp ~/cuneim/docker-compose.252.yml ~/cuneim/docker-compose.yml
+            mv ~/cuneim/.env.252 ~/cuneim/.env
+
+            cd ~/cuneim
+
+            # Login to GHCR to pull private images
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            # Pull images
+            docker compose pull
+
+            # Start data layer first
+            docker compose up -d postgres redis
+
+            # Wait for postgres to be healthy
+            echo "Waiting for postgres to be healthy..."
+            for i in $(seq 1 30); do
+              if docker compose exec -T postgres pg_isready -U postgres 2>/dev/null; then
+                echo "Postgres is ready"
+                break
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
+
+            # Start app layer (admin + app)
+            docker compose up -d admin app-0 app-1 app-2 app-3 app-4 app-5
+
+            # Run database migrations
+            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
+            docker compose exec -T admin npx prisma migrate deploy || true
+
+            # Admin seed (first deploy only)
+            if [ ! -f ~/cuneim/.seed_done ]; then
+              docker compose exec -T admin node prisma/seed.js && touch ~/cuneim/.seed_done
+            fi
+
+      # Dual Step 3: SCP to 251 (app server)
+      - name: Copy compose file to 251
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_251 }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "docker-compose.251.yml"
+          target: "~/cuneim/"
+
+      - name: Copy nginx files to 251
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_251 }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "nginx/"
+          target: "~/cuneim/"
+
+      - name: Copy .env.251 to 251
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST_251 }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
+          key: ${{ secrets.SSH_KEY }}
+          source: ".env.251"
+          target: "~/cuneim/"
+
+      # Dual Step 4: SSH deploy to 251 (app server — agent, app, nginx)
+      - name: Deploy to 251 (app server)
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_IMAGE: ${{ env.IMAGE_NAME }}
+          GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
+          GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST_251 }}
+          username: ${{ secrets.DEPLOY_USER_251 }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
+          script: |
+            set -e
+
+            # Create deployment directories
+            mkdir -p ~/cuneim
+            mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
+
+            # Activate machine-specific files
+            cp ~/cuneim/docker-compose.251.yml ~/cuneim/docker-compose.yml
+            mv ~/cuneim/.env.251 ~/cuneim/.env
+
+            cd ~/cuneim
+
+            # Login to GHCR to pull private images
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            # Pull images
+            docker compose pull
+
+            # Start app layer (agent + app)
+            docker compose up -d agent app-0 app-1 app-2 app-3 app-4 app-5 app-6 app-7 app-8 app-9
+
+            # Run database migrations
+            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
+
+            # Deploy nginx config
+            sudo cp ~/cuneim/nginx/*.conf /etc/nginx/conf.d/
+            sudo nginx -t && sudo systemctl reload nginx
+
+  notify:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    steps:
+      - name: Checkout proxy repo
+        uses: actions/checkout@v4
+
+      - name: 🔔 推送到 Lark
+        env:
+          STATUS: ${{ needs.build-and-deploy.result }}
+          SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
+          ACTOR: ${{ github.actor }}
+          DEPLOY_TAG: ${{ needs.build-and-deploy.outputs.deploy_tag }}
+          DEPLOY_TARGET: dual
+          COMMIT_SHA: ${{ needs.build-and-deploy.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ needs.build-and-deploy.outputs.commit_message }}
+          COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
+          REPOSITORY: ${{ secrets.REPOSITORY }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET }}
+          LARK_WEBHOOK: ${{ secrets.LARK_WEBHOOK }}
+        run: bash ${GITHUB_WORKSPACE}/.github/scripts/notify-worker.sh
