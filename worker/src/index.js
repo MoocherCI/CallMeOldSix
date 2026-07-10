@@ -1,7 +1,9 @@
 import { buildDeployCard, buildNotifyCard, buildResultCard, ENVIRONMENT_OPTIONS, SERVICE_OPTIONS } from './cards.js';
 
 const GITHUB_REPO = 'MoocherCI/CallMeOldSix';
-const GITHUB_WORKFLOW = 'deploy.yml';
+function getWorkflowFile(target) {
+  return (target === 'dual') ? 'deploy-dual.yml' : 'deploy-single.yml';
+}
 
 export default {
   async fetch(request, env) {
@@ -140,7 +142,7 @@ async function handleTestCallback(env) {
     }
 
     const githubResponse = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${getWorkflowFile(target)}/dispatches`,
       {
         method: 'POST',
         headers: {
@@ -249,7 +251,7 @@ async function handleCallback(request, env) {
       // Trigger GitHub workflow
       try {
         const githubResponse = await fetch(
-          `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
+          `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${getWorkflowFile(target)}/dispatches`,
           {
             method: 'POST',
             headers: {
