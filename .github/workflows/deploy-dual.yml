@@ -43,59 +43,68 @@ env:
   ADMIN_IMAGE_NAME: moocherci/admin
 
 jobs:
-  build-and-deploy:
+  parse:
     runs-on: ubuntu-latest
     outputs:
-      services_display: ${{ env.SERVICES_DISPLAY }}
-      deploy_status: ${{ job.status }}
-      repo_branch: ${{ env.REPO_BRANCH }}
-      commit_sha: ${{ env.COMMIT_SHA }}
-      commit_message: ${{ env.COMMIT_MESSAGE }}
-      commit_time: ${{ env.COMMIT_TIME }}
-      deploy_tag: ${{ env.DEPLOY_TAG }}
-    permissions:
-      contents: read
-      packages: write
+      build_app: ${{ steps.parse_tag.outputs.build_app }}
+      build_agent: ${{ steps.parse_tag.outputs.build_agent }}
+      build_admin: ${{ steps.parse_tag.outputs.build_admin }}
+      image_tag: ${{ steps.parse_tag.outputs.image_tag }}
+      registry: ${{ env.REGISTRY }}
+      image_name: ${{ env.IMAGE_NAME }}
+      agent_image_name: ${{ env.AGENT_IMAGE_NAME }}
+      admin_image_name: ${{ env.ADMIN_IMAGE_NAME }}
+      repo_branch: ${{ steps.parse_tag.outputs.repo_branch }}
+      deploy_env: ${{ steps.parse_tag.outputs.deploy_env }}
+      deploy_target: ${{ steps.parse_tag.outputs.deploy_target }}
+      services_display: ${{ steps.parse_tag.outputs.services_display }}
+      deploy_tag: ${{ steps.parse_tag.outputs.deploy_tag }}
     steps:
-      # Step 1: Checkout proxy repo (for scripts and parse-tag)
       - name: Checkout proxy repo
         uses: actions/checkout@v4
 
-      # Step 2: Parse tag for environment, branch, and services
       - name: Parse tag for environment, branch, and services
+        id: parse_tag
         run: |
           eval "$(bash .github/scripts/parse-tag.sh)"
-          echo "DEPLOY_ENV=${DEPLOY_ENV}" >> $GITHUB_ENV
-          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
-          echo "BUILD_APP=${BUILD_APP}" >> $GITHUB_ENV
-          echo "BUILD_AGENT=${BUILD_AGENT}" >> $GITHUB_ENV
-          echo "BUILD_ADMIN=${BUILD_ADMIN}" >> $GITHUB_ENV
-          echo "SERVICES_DISPLAY=${SERVICES_DISPLAY}" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          echo "DEPLOY_TAG=${DEPLOY_TAG}" >> $GITHUB_ENV
+          echo "build_app=${BUILD_APP}" >> $GITHUB_OUTPUT
+          echo "build_agent=${BUILD_AGENT}" >> $GITHUB_OUTPUT
+          echo "build_admin=${BUILD_ADMIN}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "repo_branch=${REPO_BRANCH}" >> $GITHUB_OUTPUT
+          echo "deploy_env=${DEPLOY_ENV}" >> $GITHUB_OUTPUT
+          echo "deploy_target=${DEPLOY_TARGET}" >> $GITHUB_OUTPUT
+          echo "services_display=${SERVICES_DISPLAY}" >> $GITHUB_OUTPUT
+          echo "deploy_tag=${DEPLOY_TAG}" >> $GITHUB_OUTPUT
 
-      # Step 3: Build images via reusable workflow
-      - name: Build images
-        id: build_images
-        uses: ./.github/workflows/build-images.yml
-        with:
-          build_app: ${{ env.BUILD_APP }}
-          build_agent: ${{ env.BUILD_AGENT }}
-          build_admin: ${{ env.BUILD_ADMIN }}
-          image_tag: ${{ env.IMAGE_TAG }}
-          registry: ${{ env.REGISTRY }}
-          image_name: ${{ env.IMAGE_NAME }}
-          agent_image_name: ${{ env.AGENT_IMAGE_NAME }}
-          admin_image_name: ${{ env.ADMIN_IMAGE_NAME }}
-          repo_branch: ${{ env.REPO_BRANCH }}
-        secrets: inherit
+  build:
+    needs: parse
+    uses: ./.github/workflows/build-images.yml
+    with:
+      build_app: ${{ needs.parse.outputs.build_app }}
+      build_agent: ${{ needs.parse.outputs.build_agent }}
+      build_admin: ${{ needs.parse.outputs.build_admin }}
+      image_tag: ${{ needs.parse.outputs.image_tag }}
+      registry: ${{ needs.parse.outputs.registry }}
+      image_name: ${{ needs.parse.outputs.image_name }}
+      agent_image_name: ${{ needs.parse.outputs.agent_image_name }}
+      admin_image_name: ${{ needs.parse.outputs.admin_image_name }}
+      repo_branch: ${{ needs.parse.outputs.repo_branch }}
+    secrets: inherit
 
-      - name: Set commit info from build
-        run: |
-          echo "COMMIT_SHA=${{ steps.build_images.outputs.commit_sha }}" >> $GITHUB_ENV
-          echo "COMMIT_MESSAGE=${{ steps.build_images.outputs.commit_message }}" >> $GITHUB_ENV
-          echo "COMMIT_TIME=${{ steps.build_images.outputs.commit_time }}" >> $GITHUB_ENV
-
+  deploy:
+    needs: [parse, build]
+    runs-on: ubuntu-latest
+    env:
+      BUILD_APP: ${{ needs.parse.outputs.build_app }}
+      BUILD_AGENT: ${{ needs.parse.outputs.build_agent }}
+      BUILD_ADMIN: ${{ needs.parse.outputs.build_admin }}
+      IMAGE_TAG: ${{ needs.parse.outputs.image_tag }}
+      IMAGE_NAME: ${{ needs.parse.outputs.image_name }}
+      AGENT_IMAGE_NAME: ${{ needs.parse.outputs.agent_image_name }}
+      ADMIN_IMAGE_NAME: ${{ needs.parse.outputs.admin_image_name }}
+      DEPLOY_ENV: ${{ needs.parse.outputs.deploy_env }}
+    steps:
       # ============================================================
       # Dual-machine deploy path
       # ============================================================
@@ -314,21 +323,21 @@ jobs:
   notify:
     if: always()
     runs-on: ubuntu-latest
-    needs: build-and-deploy
+    needs: [parse, build, deploy]
     steps:
       - name: Checkout proxy repo
         uses: actions/checkout@v4
 
       - name: 🔔 推送到 Lark
         env:
-          STATUS: ${{ needs.build-and-deploy.result }}
-          SERVICES: ${{ needs.build-and-deploy.outputs.services_display }}
+          STATUS: ${{ needs.deploy.result }}
+          SERVICES: ${{ needs.parse.outputs.services_display }}
           ACTOR: ${{ github.actor }}
-          DEPLOY_TAG: ${{ needs.build-and-deploy.outputs.deploy_tag }}
+          DEPLOY_TAG: ${{ needs.parse.outputs.deploy_tag }}
           DEPLOY_TARGET: dual
-          COMMIT_SHA: ${{ needs.build-and-deploy.outputs.commit_sha }}
-          COMMIT_MESSAGE: ${{ needs.build-and-deploy.outputs.commit_message }}
-          COMMIT_TIME: ${{ needs.build-and-deploy.outputs.commit_time }}
+          COMMIT_SHA: ${{ needs.build.outputs.commit_sha }}
+          COMMIT_MESSAGE: ${{ needs.build.outputs.commit_message }}
+          COMMIT_TIME: ${{ needs.build.outputs.commit_time }}
           REPOSITORY: ${{ secrets.REPOSITORY }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
