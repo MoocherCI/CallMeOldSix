@@ -46,7 +46,7 @@ if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
         admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
       esac
     done
-    SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
+    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}" | sed 's/,/, /g')
   fi
 
   # Construct a synthetic tag name for display
@@ -98,7 +98,7 @@ else
         admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
       esac
     done
-    SERVICES_DISPLAY=$(IFS=', '; echo "${DISPLAY_PARTS[*]}")
+    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}" | sed 's/,/, /g')
   else
     BUILD_APP="true"
     BUILD_AGENT="true"
