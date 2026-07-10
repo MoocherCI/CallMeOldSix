@@ -67,7 +67,7 @@ jobs:
       - name: Checkout proxy repo
         uses: actions/checkout@v4
 
-      - name: Parse tag for environment, branch, and services
+      - name: Parse deployment tag
         id: parse_tag
         run: |
           eval "$(bash .github/scripts/parse-tag.sh)"
