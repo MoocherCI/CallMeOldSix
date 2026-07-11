@@ -118,6 +118,33 @@ jobs:
       # Dual-machine deploy path
       # ============================================================
 
+      # Checkout proxy repo (for scripts, compose files, nginx configs)
+      - name: Checkout proxy repo
+        uses: actions/checkout@v4
+
+      - name: Backup proxy repo deploy files
+        run: |
+          mkdir -p /tmp/proxy-deploy/
+          cp docker-compose.251.yml docker-compose.252.yml /tmp/proxy-deploy/
+          cp -r nginx /tmp/proxy-deploy/
+
+      - name: Configure git for private repo access
+        run: bash ${GITHUB_WORKSPACE}/.github/scripts/gitconfig.sh
+        env:
+          ED25519_KEY: ${{ secrets.ED25519_KEY }}
+
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.REPOSITORY }}
+          ssh-key: ${{ secrets.ED25519_KEY }}
+          ref: ${{ needs.parse.outputs.repo_branch }}
+
+      - name: Restore proxy repo deploy files
+        run: |
+          cp /tmp/proxy-deploy/docker-compose.251.yml /tmp/proxy-deploy/docker-compose.252.yml .
+          cp -r /tmp/proxy-deploy/nginx .
+
       # Dual Step 0: Generate .env.251 and .env.252
       - name: Generate dual .env files
         id: gen_dual_env
