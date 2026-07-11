@@ -59,6 +59,8 @@ if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
 else
   # --- Tag trigger: parse from github.ref_name (existing logic) ---
   TAG="${GITHUB_REF_NAME:-}"
+  DEPLOY_ENV=""
+  REMAINDER=""
   if [[ "$TAG" == dev-v* ]]; then
     DEPLOY_ENV="dev"
     REMAINDER="${TAG#dev-v}"
@@ -71,6 +73,11 @@ else
   elif [[ "$TAG" == prod-v* ]]; then
     DEPLOY_ENV="prod"
     REMAINDER="${TAG#prod-v}"
+  fi
+  if [ -z "$DEPLOY_ENV" ]; then
+    echo "ERROR: Unrecognized tag format: '$TAG'" >&2
+    echo "Expected: dev-v*, test-v*, next-v*, or prod-v*" >&2
+    exit 1
   fi
 
   BUILD_APP="false"
