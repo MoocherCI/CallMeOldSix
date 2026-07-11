@@ -153,7 +153,7 @@ async function handleTestCallback(env) {
         },
         body: JSON.stringify({
           ref: 'main',
-          inputs: { environment: testEnv, version: '', services: 'all', branch: '', target },
+          inputs: { environment: testEnv, version: '', services: 'all', branch: '' },
         }),
       }
     );
@@ -262,7 +262,7 @@ async function handleCallback(request, env) {
             },
             body: JSON.stringify({
               ref: 'main',
-              inputs: { environment, version, services, branch, target },
+              inputs: { environment, version, services, branch },
             }),
           }
         );
