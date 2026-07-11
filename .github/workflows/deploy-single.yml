@@ -73,6 +73,11 @@ jobs:
 
       - name: Parse deployment tag
         id: parse_tag
+        env:
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_SERVICES: ${{ github.event.inputs.services }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
         run: |
           eval "$(bash .github/scripts/parse-tag.sh)"
           echo "build_app=${BUILD_APP}" >> $GITHUB_OUTPUT
