@@ -226,10 +226,11 @@ async function handleCallback(request, env) {
 
     // Log form_value and name for diagnostics
     console.log('[callback] action.form_value:', JSON.stringify(action.form_value));
-    console.log('[callback] action.name:', action.name);
+    const actionName = action.name || action.value?.key;
+    console.log('[callback] action.name:', action.name, 'action.value.key:', action.value?.key, 'resolved:', actionName);
 
     // Handle deploy button click
-    if (action.name === 'deploy') {
+    if (actionName === 'deploy') {
       console.log('[callback] Deploy action triggered');
       const formValue = action.form_value || {};
       const environment = formValue.environment;
@@ -283,7 +284,7 @@ async function handleCallback(request, env) {
     }
 
     // Handle redeploy button click
-    if (action.name === 'redeploy') {
+    if (actionName === 'redeploy') {
       return Response.json(buildDeployCard());
     }
 
