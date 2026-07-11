@@ -126,7 +126,7 @@ jobs:
       - name: Backup proxy repo deploy files
         run: |
           mkdir -p /tmp/proxy-deploy/
-          cp docker-compose.251.yml docker-compose.252.yml /tmp/proxy-deploy/
+          cp docker-compose.single.yml /tmp/proxy-deploy/
           cp -r nginx /tmp/proxy-deploy/
 
       - name: Configure git for private repo access
@@ -143,7 +143,7 @@ jobs:
 
       - name: Restore proxy repo deploy files
         run: |
-          cp /tmp/proxy-deploy/docker-compose.251.yml /tmp/proxy-deploy/docker-compose.252.yml .
+          cp /tmp/proxy-deploy/docker-compose.single.yml .
           cp -r /tmp/proxy-deploy/nginx .
 
       # Step 7: Upload files to server
@@ -153,9 +153,8 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "user-platform/docker-compose.yml"
+          source: "docker-compose.single.yml"
           target: "~/cuneim/"
-          strip_components: 1
 
       - name: Copy app prisma files to server
         if: env.BUILD_APP == 'true'
@@ -223,6 +222,9 @@ jobs:
             # Create deployment directory
             mkdir -p ~/cuneim
             mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
+
+            # Activate the proxy-owned single-machine deployment definition
+            mv ~/cuneim/docker-compose.single.yml ~/cuneim/docker-compose.yml
 
             # Read old per-service image tags from existing .env (fallback to 'latest')
             OLD_APP_TAG=$(grep '^APP_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || echo "latest")

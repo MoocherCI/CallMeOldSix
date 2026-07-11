@@ -1,0 +1,153 @@
+services:
+  # ──────────────────────────────────────────────
+  # PostgreSQL 16 — 单实例，多 Schema 隔离
+  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cuneim-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cuneim
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cuneim_dev}
+      POSTGRES_DB: cuneim_db
+      # 性能调优（开发环境）
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # 容器首次启动时自动执行 Schema 初始化
+      - ./prisma/init-schemas.sql:/docker-entrypoint-initdb.d/01-init-schemas.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cuneim -d cuneim_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - cuneim-network
+
+  # ──────────────────────────────────────────────
+  # Redis 7 — 分布式锁
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cuneim-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - cuneim-network
+
+  # ──────────────────────────────────────────────
+  # Next.js 应用
+  # ──────────────────────────────────────────────
+  app:
+    image: ghcr.io/${GHCR_IMAGE}:${APP_IMAGE_TAG:-latest}
+    container_name: cuneim-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://cuneim:${POSTGRES_PASSWORD:-cuneim_dev}@postgres:5432/cuneim_db?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-in-production}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:3000/api/auth/google/callback}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      ADMIN_SECRET: ${ADMIN_SECRET:-}
+      AGENT_POOL_URL: http://agent:3100
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-}
+      INTERNAL_BASE_URL: ${INTERNAL_BASE_URL:-http://localhost:3000}
+      SWAGGER_PASSWORD: ${SWAGGER_PASSWORD:-change-me-in-production}
+      SHARED_LOGS_DIR: /app/shared-logs
+    volumes:
+      - ./shared-logs:/app/shared-logs:ro
+    networks:
+      - cuneim-network
+
+  # ──────────────────────────────────────────────
+  # Agent 服务
+  # ──────────────────────────────────────────────
+  agent:
+    image: ghcr.io/${GHCR_IMAGE_AGENT}:${AGENT_IMAGE_TAG:-latest}
+    container_name: cuneim-agent
+    restart: unless-stopped
+    expose:
+      - "3100"
+    volumes:
+      - ./agent/data:/app/data:rw
+      - ./shared-logs:/app/shared-logs:rw
+    environment:
+      HOST: 0.0.0.0
+      LLM_PROVIDER: openrouter
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      AGENT_CONFIG_PATH: /app/config/agent.json.enc
+      PRICING_CONFIG_PATH: /app/config/pricing.json
+      LOG_DIR: /app/shared-logs
+      LOG_MAX_SIZE: 2GB
+      LOG_MAX_FILES: 10
+    networks:
+      - cuneim-network
+
+  # ──────────────────────────────────────────────
+  # Admin Platform (NestJS + React)
+  # ──────────────────────────────────────────────
+  admin:
+    image: ghcr.io/${GHCR_IMAGE_ADMIN}:${ADMIN_IMAGE_TAG:-latest}
+    container_name: cuneim-admin
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://cuneim:${POSTGRES_PASSWORD:-cuneim_dev}@postgres:5432/cuneim_db?schema=admin
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-admin-jwt-secret-change-me}
+      ADMIN_JWT_REFRESH_SECRET: ${ADMIN_JWT_REFRESH_SECRET:-admin-jwt-refresh-secret-change-me}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    networks:
+      - cuneim-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  cuneim-network:
+    driver: bridge
