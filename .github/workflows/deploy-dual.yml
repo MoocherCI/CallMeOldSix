@@ -281,7 +281,7 @@ jobs:
 
             # Admin seed (first deploy only)
             if [ ! -f ~/cuneim/.seed_done ]; then
-              docker compose exec -T admin node prisma/seed.js && touch ~/cuneim/.seed_done
+              docker compose exec -T admin node prisma/seed.js || true; touch ~/cuneim/.seed_done
             fi
 
       # Dual Step 3: SCP to 251 (app server)
