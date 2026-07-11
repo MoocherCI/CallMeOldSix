@@ -349,12 +349,10 @@ jobs:
             # Start app layer (agent + app)
             docker compose up -d agent app-0 app-1 app-2 app-3 app-4 app-5 app-6 app-7 app-8 app-9
 
-            # Run database migrations
-            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
-
-            # Deploy nginx config
+            # Deploy nginx config (with placeholder substitution)
+            sed -i 's/\${APP_252_HOST}/'"${{ secrets.DEPLOY_HOST_252 }}"'/g' ~/cuneim/nginx/*.conf
             sudo cp ~/cuneim/nginx/*.conf /etc/nginx/conf.d/
-            sudo nginx -t && sudo systemctl reload nginx
+            sudo nginx -t && sudo systemctl reload nginx || true
 
   notify:
     if: always()

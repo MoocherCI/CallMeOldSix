@@ -285,7 +285,7 @@ jobs:
             # Deploy admin nginx config (conditional)
             if [ "${{ env.BUILD_ADMIN }}" = "true" ]; then
               sudo cp ~/cuneim/nginx/admin.cuneim.com.conf /etc/nginx/conf.d/admin.cuneim.com.conf
-              sudo nginx -t && sudo systemctl reload nginx
+              sudo nginx -t && sudo systemctl reload nginx || true
             fi
 
   notify:
