@@ -36,7 +36,7 @@ if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
     BUILD_APP="true"
     BUILD_AGENT="true"
     BUILD_ADMIN="true"
-    SERVICES_DISPLAY="app, agent, admin"
+    SERVICES_DISPLAY="app,agent,admin"
   else
     IFS='+' read -ra SVC_ARRAY <<< "$SERVICES_INPUT"
     for svc in "${SVC_ARRAY[@]}"; do
@@ -46,7 +46,7 @@ if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
         admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
       esac
     done
-    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}" | sed 's/,/, /g')
+    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}")
   fi
 
   # Construct a synthetic tag name for display
@@ -105,12 +105,12 @@ else
         admin) BUILD_ADMIN="true"; DISPLAY_PARTS+=("admin") ;;
       esac
     done
-    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}" | sed 's/,/, /g')
+    SERVICES_DISPLAY=$(IFS=,; echo "${DISPLAY_PARTS[*]}")
   else
     BUILD_APP="true"
     BUILD_AGENT="true"
     BUILD_ADMIN="true"
-    SERVICES_DISPLAY="app, agent, admin"
+    SERVICES_DISPLAY="app,agent,admin"
 
     if [[ "$REMAINDER" == *-* ]]; then
       REPO_BRANCH="${REMAINDER#*-}"
