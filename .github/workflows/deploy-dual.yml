@@ -169,6 +169,7 @@ jobs:
           LOG_DIR=/app/logs
           LOG_MAX_SIZE=${{ vars.DUAL_AGENT_LOG_MAX_SIZE || '2GB' }}
           LOG_MAX_FILES=${{ vars.DUAL_AGENT_LOG_MAX_FILES || '10' }}
+          RUN_APP_MIGRATIONS=${{ vars.DUAL_RUN_APP_MIGRATIONS || 'false' }}
           RUN_ADMIN_MIGRATIONS=${{ vars.DUAL_RUN_ADMIN_MIGRATIONS || 'false' }}
           APP_MEM_LIMIT=${{ vars.DUAL_APP_MEM_LIMIT || '2g' }}
           APP_CPU_LIMIT=${{ vars.DUAL_APP_CPU_LIMIT || '1.50' }}
@@ -240,12 +241,13 @@ jobs:
           BUILD_APP: ${{ env.BUILD_APP }}
           BUILD_AGENT: ${{ env.BUILD_AGENT }}
           BUILD_ADMIN: ${{ env.BUILD_ADMIN }}
+          RUN_APP_MIGRATIONS: ${{ vars.DUAL_RUN_APP_MIGRATIONS || 'false' }}
           RUN_ADMIN_MIGRATIONS: ${{ vars.DUAL_RUN_ADMIN_MIGRATIONS || 'false' }}
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
           username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
-          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN,RUN_ADMIN_MIGRATIONS
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN,RUN_APP_MIGRATIONS,RUN_ADMIN_MIGRATIONS
           script: |
             set -e
 
@@ -296,11 +298,15 @@ jobs:
               exit 1
             fi
 
-            # Migrate before replacing running application containers. Migration
-            # failures are deployment failures; never publish a false success.
+            # User and Admin currently share a poisoned Prisma migration table.
+            # Keep image rollout independent until one package owns migrations.
             if [ "$BUILD_APP" = "true" ]; then
               docker compose pull app-0
-              docker compose run --rm --no-deps --user root app-0 npx prisma migrate deploy
+              if [ "$RUN_APP_MIGRATIONS" = "true" ]; then
+                docker compose run --rm --no-deps --user root app-0 npx prisma migrate deploy
+              else
+                echo "App migration skipped: set DUAL_RUN_APP_MIGRATIONS=true after migration ownership and failed records are repaired"
+              fi
             fi
             if [ "$BUILD_ADMIN" = "true" ]; then
               docker compose pull admin
