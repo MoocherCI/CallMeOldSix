@@ -1,0 +1,110 @@
+name: 'Migrate Single DB to Dual'
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: '输入 COPY_SINGLE_TO_DUAL 确认覆盖 dual 数据库'
+        required: true
+        type: string
+
+jobs:
+  migrate:
+    if: inputs.confirmation == 'COPY_SINGLE_TO_DUAL'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_HOST: ${{ secrets.DEPLOY_HOST }}
+      SOURCE_USER: ${{ secrets.DEPLOY_USER }}
+      TARGET_HOST: ${{ secrets.DEPLOY_HOST_252 }}
+      TARGET_USER: ${{ secrets.DEPLOY_USER_252 }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+    steps:
+      - name: Configure SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Preflight source and target
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new)
+          "${SSH[@]}" "$SOURCE_USER@$SOURCE_HOST" \
+            "docker exec cuneim-postgres pg_isready -U cuneim -d cuneim_db"
+          "${SSH[@]}" "$TARGET_USER@$TARGET_HOST" \
+            "cd ~/cuneim && docker compose exec -T postgres pg_isready -U postgres -d cuneim"
+
+      - name: Create consistent source snapshot
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "$SOURCE_USER@$SOURCE_HOST" \
+            "docker exec cuneim-postgres pg_dump -U cuneim -d cuneim_db -Fc" \
+            > /tmp/single.dump
+          test -s /tmp/single.dump
+          du -h /tmp/single.dump
+
+      - name: Copy snapshot to 252
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            /tmp/single.dump "$TARGET_USER@$TARGET_HOST:~/cuneim/single-import.dump"
+
+      - name: Backup and replace dual database
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "$TARGET_USER@$TARGET_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd ~/cuneim
+          mkdir -p backups
+          stamp=$(date -u +%Y%m%d%H%M%S)
+          docker compose exec -T postgres pg_dump -U postgres -d cuneim -Fc \
+            > "backups/pre-single-import-${stamp}.dump"
+
+          docker compose stop app-0 app-1 admin agent
+          restart_services() {
+            docker compose up -d agent admin app-0 app-1
+          }
+          trap restart_services EXIT
+
+          docker compose exec -T postgres psql -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS cuneim WITH (FORCE)'
+          docker compose exec -T postgres psql -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cuneim'
+          docker compose exec -T postgres pg_restore -U postgres -d cuneim \
+            --exit-on-error --no-owner --no-privileges < single-import.dump
+
+          restart_services
+          trap - EXIT
+          rm -f single-import.dump
+
+          docker compose exec -T postgres psql -U postgres -d cuneim \
+            -v ON_ERROR_STOP=1 -Atc \
+            "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname IN ('public','admin') ORDER BY 1"
+          REMOTE
+
+      - name: Verify dual health
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "$TARGET_USER@$TARGET_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          for endpoint in \
+            http://localhost:3100/health \
+            http://localhost:3000/api/health \
+            http://localhost:3001/api/health \
+            http://localhost:3006/api; do
+            for i in $(seq 1 30); do
+              if curl -fsS "$endpoint" >/dev/null; then break; fi
+              if [ "$i" = 30 ]; then echo "Health check failed: $endpoint" >&2; exit 1; fi
+              sleep 2
+            done
+          done
+          REMOTE
+
+      - name: Remove runner snapshot
+        if: always()
+        run: rm -f /tmp/single.dump ~/.ssh/deploy_key

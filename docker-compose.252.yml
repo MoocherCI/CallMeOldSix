@@ -84,6 +84,8 @@ services:
       - shared-logs:/app/logs
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=${ADMIN_DATABASE_URL}
     restart: unless-stopped
     mem_limit: ${ADMIN_MEM_LIMIT:-2g}
     cpus: ${ADMIN_CPU_LIMIT:-1.50}

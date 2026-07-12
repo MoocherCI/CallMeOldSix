@@ -194,7 +194,7 @@ jobs:
           {
             echo "$ENV_CONTENT"
             echo "$NON_SECRET"
-            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim?schema=public"
             echo "REDIS_URL=redis://${{ secrets.DEPLOY_HOST_252 }}:6379"
             echo "AGENT_POOL_URL=http://agent:3000"
           } > .env.251
@@ -203,7 +203,8 @@ jobs:
           {
             echo "$ENV_CONTENT"
             echo "$NON_SECRET"
-            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim"
+            echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim?schema=public"
+            echo "ADMIN_DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim?schema=admin"
             echo "REDIS_URL=redis://redis:6379"
             echo "AGENT_POOL_URL=http://agent:3000"
           } > .env.252
