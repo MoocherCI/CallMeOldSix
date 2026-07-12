@@ -17,7 +17,7 @@ services:
   agent:
     image: ghcr.io/moocherci/agent:${AGENT_IMAGE_TAG:-latest}
     ports:
-      - "3100:3100"
+      - "3100:3000"
     volumes:
       - shared-logs:/app/logs
       - agent_data:/app/data
@@ -29,7 +29,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3100/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

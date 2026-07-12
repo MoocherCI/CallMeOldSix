@@ -13,7 +13,10 @@ host's memory free for the kernel, Docker, filesystem cache, and deployment
 overlap. If the actual hosts are smaller, lower the repository variables before
 deploying.
 
-251 is compute-oriented. 252 is data-oriented: PostgreSQL receives 40 GiB and
+251 is compute-oriented. The Agent publishes host port 3100 to its actual
+container port 3000; the prebuilt binary and its Dockerfile currently disagree
+about this port, so deployment follows the verified runtime behavior. 252 is
+data-oriented: PostgreSQL receives 40 GiB and
 8 CPUs by default, while only two User App instances run beside the data layer.
 
 ## Repository variables

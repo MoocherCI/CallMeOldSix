@@ -184,7 +184,7 @@ jobs:
             echo "$NON_SECRET"
             echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim"
             echo "REDIS_URL=redis://${{ secrets.DEPLOY_HOST_252 }}:6379"
-            echo "AGENT_POOL_URL=http://agent:3100"
+            echo "AGENT_POOL_URL=http://agent:3000"
           } > .env.251
 
           # .env.252 — data server: DB/Redis local, agent pool on 251
@@ -396,7 +396,12 @@ jobs:
               docker compose up -d agent
               for i in $(seq 1 30); do
                 if curl -fsS http://localhost:3100/health >/dev/null; then break; fi
-                if [ "$i" = "30" ]; then echo "Agent failed its health check" >&2; exit 1; fi
+                if [ "$i" = "30" ]; then
+                  echo "Agent failed its health check" >&2
+                  docker compose ps agent >&2
+                  docker compose logs --tail=200 agent >&2
+                  exit 1
+                fi
                 sleep 2
               done
             fi
