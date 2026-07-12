@@ -61,6 +61,10 @@ defaults without changing Compose files:
   `DUAL_RUN_ADMIN_MIGRATIONS` set to `false` until the overlapping histories
   and the failed 252 migration record are repaired. When explicitly enabled,
   migrations run in one-off containers and any failure stops deployment.
+- User and Admin both manage the `main`, `session`, `admin`, `usage`, and `log`
+  Prisma schemas. Their migration metadata remains separated using the same
+  connection defaults as single-machine deployment: `public` for User and
+  `admin` for Admin.
 - Only selected service images are pulled and recreated. Unselected image tags
   are preserved.
 - Removed legacy replicas are cleaned with `--remove-orphans` during an app

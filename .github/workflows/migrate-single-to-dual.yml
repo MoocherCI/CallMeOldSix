@@ -83,7 +83,7 @@ jobs:
 
           docker compose exec -T postgres psql -U postgres -d cuneim \
             -v ON_ERROR_STOP=1 -Atc \
-            "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname IN ('public','admin') ORDER BY 1"
+            "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname IN ('main','session','admin','usage','log') ORDER BY 1"
           REMOTE
 
       - name: Verify dual health
