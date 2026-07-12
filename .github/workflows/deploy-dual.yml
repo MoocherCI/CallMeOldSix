@@ -161,6 +161,14 @@ jobs:
           GHCR_IMAGE_AGENT=${{ env.AGENT_IMAGE_NAME }}
           GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
           DEPLOY_ENV=${{ env.DEPLOY_ENV }}
+          HOST=0.0.0.0
+          PORT=3000
+          LLM_PROVIDER=${{ vars.DUAL_LLM_PROVIDER || 'openrouter' }}
+          AGENT_CONFIG_PATH=/app/config/agent.json.enc
+          PRICING_CONFIG_PATH=/app/config/pricing.json
+          LOG_DIR=/app/logs
+          LOG_MAX_SIZE=${{ vars.DUAL_AGENT_LOG_MAX_SIZE || '2GB' }}
+          LOG_MAX_FILES=${{ vars.DUAL_AGENT_LOG_MAX_FILES || '10' }}
           APP_MEM_LIMIT=${{ vars.DUAL_APP_MEM_LIMIT || '2g' }}
           APP_CPU_LIMIT=${{ vars.DUAL_APP_CPU_LIMIT || '1.50' }}
           AGENT_MEM_LIMIT=${{ vars.DUAL_AGENT_MEM_LIMIT || '4g' }}
@@ -198,6 +206,7 @@ jobs:
 
       # Dual Step 1: SCP to 252 (data server)
       - name: Copy compose file to 252
+        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
@@ -207,6 +216,7 @@ jobs:
           target: "~/cuneim/"
 
       - name: Copy .env.252 to 252
+        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
@@ -217,6 +227,7 @@ jobs:
 
       # Dual Step 2: SSH deploy to 252 (data server — postgres, redis, admin, app)
       - name: Deploy to 252 (data server)
+        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -319,6 +330,7 @@ jobs:
 
       # Dual Step 3: SCP to 251 (app server)
       - name: Copy compose file to 251
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
@@ -328,6 +340,7 @@ jobs:
           target: "~/cuneim/"
 
       - name: Copy nginx files to 251
+        if: env.BUILD_APP == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
@@ -337,6 +350,7 @@ jobs:
           target: "~/cuneim/"
 
       - name: Copy .env.251 to 251
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
@@ -347,6 +361,7 @@ jobs:
 
       # Dual Step 4: SSH deploy to 251 (app server — agent, app, nginx)
       - name: Deploy to 251 (app server)
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -417,12 +432,14 @@ jobs:
               done
             fi
 
-            # Validate and atomically recreate the containerized nginx. The host
-            # nginx service is intentionally not part of this architecture.
-            sed -i 's/\${APP_252_HOST}/'"${{ secrets.DEPLOY_HOST_252 }}"'/g' ~/cuneim/nginx/*.conf
-            docker compose pull nginx
-            docker compose run --rm --no-deps nginx nginx -t
-            docker compose up -d --force-recreate nginx
+            if [ "$BUILD_APP" = "true" ]; then
+              # Validate and atomically recreate the containerized nginx. The
+              # host nginx service is intentionally not part of this architecture.
+              sed -i 's/\${APP_252_HOST}/'"${{ secrets.DEPLOY_HOST_252 }}"'/g' ~/cuneim/nginx/*.conf
+              docker compose pull nginx
+              docker compose run --rm --no-deps nginx nginx -t
+              docker compose up -d --force-recreate nginx
+            fi
 
   notify:
     if: always()

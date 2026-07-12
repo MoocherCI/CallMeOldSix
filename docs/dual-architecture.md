@@ -45,6 +45,10 @@ defaults without changing Compose files:
 
 ## Deployment behavior
 
+- `app` deploys to both 251 and 252, then refreshes the 251 ingress.
+- `agent` deploys only to 251.
+- `admin` deploys only to 252.
+- Combined selections use the union of those host targets.
 - 252 data services start and pass readiness checks first.
 - Migrations run in one-off containers before application containers change.
 - A failed migration stops the deployment; it is never converted into success.
