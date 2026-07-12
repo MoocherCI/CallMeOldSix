@@ -51,6 +51,11 @@ defaults without changing Compose files:
 
 ## Deployment behavior
 
+Dual ingress serves `next.cuneim.com`, `next-api.cuneim.com`,
+`next-stream.cuneim.com`, and `next-admin.cuneim.com`. The corresponding
+production hostnames remain accepted as aliases so an origin switch does not
+require another container release.
+
 - `app` deploys to both 251 and 252, then refreshes the 251 ingress.
 - `agent` deploys to both 252 and 251; each host's apps use its local Agent.
 - `admin` deploys only to 252.
