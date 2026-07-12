@@ -61,7 +61,7 @@ fi
 sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 22
 sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 5432
 sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 6379
-sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 3000:3005
+sudo ufw allow proto tcp from ${INTERNAL_SUBNET} to any port 3000:3006
 
 echo "  ufw rules configured."
 echo ""

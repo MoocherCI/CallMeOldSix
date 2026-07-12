@@ -8,20 +8,21 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_DB=cuneim
+      - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    mem_limit: 50g
     command:
       - postgres
       - -c
-      - shared_buffers=16GB
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-10GB}
       - -c
-      - effective_cache_size=48GB
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-30GB}
       - -c
       - random_page_cost=1.1
       - -c
       - work_mem=32MB
       - -c
-      - maintenance_work_mem=2GB
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-2GB}
       - -c
       - effective_io_concurrency=200
       - -c
@@ -36,6 +37,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    mem_limit: ${POSTGRES_MEM_LIMIT:-40g}
+    cpus: ${POSTGRES_CPU_LIMIT:-8.00}
     networks:
       - app_network
 
@@ -45,21 +48,30 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    mem_limit: 6g
-    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-3gb} --maxmemory-policy allkeys-lru
     restart: unless-stopped
+    mem_limit: ${REDIS_MEM_LIMIT:-4g}
+    cpus: ${REDIS_CPU_LIMIT:-2.00}
     networks:
       - app_network
 
   admin:
     image: ghcr.io/moocherci/admin:${ADMIN_IMAGE_TAG:-latest}
     ports:
-      - "3006:3000"
+      - "3006:3001"
     volumes:
       - shared-logs:/app/logs
     env_file:
       - .env
     restart: unless-stopped
+    mem_limit: ${ADMIN_MEM_LIMIT:-2g}
+    cpus: ${ADMIN_CPU_LIMIT:-1.50}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - app_network
 
@@ -72,6 +84,14 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    mem_limit: ${APP_MEM_LIMIT:-2g}
+    cpus: ${APP_CPU_LIMIT:-1.50}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - app_network
 
@@ -84,54 +104,14 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    networks:
-      - app_network
-
-  app-2:
-    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
-    ports:
-      - "3002:3000"
-    volumes:
-      - shared-logs:/app/logs
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app_network
-
-  app-3:
-    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
-    ports:
-      - "3003:3000"
-    volumes:
-      - shared-logs:/app/logs
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app_network
-
-  app-4:
-    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
-    ports:
-      - "3004:3000"
-    volumes:
-      - shared-logs:/app/logs
-    env_file:
-      - .env
-    restart: unless-stopped
-    networks:
-      - app_network
-
-  app-5:
-    image: ghcr.io/moocherci/user-platform:${APP_IMAGE_TAG:-latest}
-    ports:
-      - "3005:3000"
-    volumes:
-      - shared-logs:/app/logs
-    env_file:
-      - .env
-    restart: unless-stopped
+    mem_limit: ${APP_MEM_LIMIT:-2g}
+    cpus: ${APP_CPU_LIMIT:-1.50}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - app_network
 

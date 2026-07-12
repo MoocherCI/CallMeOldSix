@@ -111,10 +111,6 @@ else
     BUILD_AGENT="true"
     BUILD_ADMIN="true"
     SERVICES_DISPLAY="app,agent,admin"
-
-    if [[ "$REMAINDER" == *-* ]]; then
-      REPO_BRANCH="${REMAINDER#*-}"
-    fi
   fi
 
   DEPLOY_TAG="$TAG"

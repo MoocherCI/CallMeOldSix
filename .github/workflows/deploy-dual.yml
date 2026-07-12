@@ -161,9 +161,22 @@ jobs:
           GHCR_IMAGE_AGENT=${{ env.AGENT_IMAGE_NAME }}
           GHCR_IMAGE_ADMIN=${{ env.ADMIN_IMAGE_NAME }}
           DEPLOY_ENV=${{ env.DEPLOY_ENV }}
-          APP_IMAGE_TAG=${{ env.IMAGE_TAG }}
-          AGENT_IMAGE_TAG=${{ env.IMAGE_TAG }}
-          ADMIN_IMAGE_TAG=${{ env.IMAGE_TAG }}"
+          APP_MEM_LIMIT=${{ vars.DUAL_APP_MEM_LIMIT || '2g' }}
+          APP_CPU_LIMIT=${{ vars.DUAL_APP_CPU_LIMIT || '1.50' }}
+          AGENT_MEM_LIMIT=${{ vars.DUAL_AGENT_MEM_LIMIT || '4g' }}
+          AGENT_CPU_LIMIT=${{ vars.DUAL_AGENT_CPU_LIMIT || '2.00' }}
+          NGINX_MEM_LIMIT=${{ vars.DUAL_NGINX_MEM_LIMIT || '512m' }}
+          NGINX_CPU_LIMIT=${{ vars.DUAL_NGINX_CPU_LIMIT || '0.50' }}
+          POSTGRES_MEM_LIMIT=${{ vars.DUAL_POSTGRES_MEM_LIMIT || '40g' }}
+          POSTGRES_CPU_LIMIT=${{ vars.DUAL_POSTGRES_CPU_LIMIT || '8.00' }}
+          POSTGRES_SHARED_BUFFERS=${{ vars.DUAL_POSTGRES_SHARED_BUFFERS || '10GB' }}
+          POSTGRES_EFFECTIVE_CACHE_SIZE=${{ vars.DUAL_POSTGRES_EFFECTIVE_CACHE_SIZE || '30GB' }}
+          POSTGRES_MAINTENANCE_WORK_MEM=${{ vars.DUAL_POSTGRES_MAINTENANCE_WORK_MEM || '2GB' }}
+          REDIS_MEM_LIMIT=${{ vars.DUAL_REDIS_MEM_LIMIT || '4g' }}
+          REDIS_CPU_LIMIT=${{ vars.DUAL_REDIS_CPU_LIMIT || '2.00' }}
+          REDIS_MAXMEMORY=${{ vars.DUAL_REDIS_MAXMEMORY || '3gb' }}
+          ADMIN_MEM_LIMIT=${{ vars.DUAL_ADMIN_MEM_LIMIT || '2g' }}
+          ADMIN_CPU_LIMIT=${{ vars.DUAL_ADMIN_CPU_LIMIT || '1.50' }}"
 
           # .env.251 — app server: DB/Redis on 252, agent pool local
           {
@@ -171,7 +184,7 @@ jobs:
             echo "$NON_SECRET"
             echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@${{ secrets.DEPLOY_HOST_252 }}:5432/cuneim"
             echo "REDIS_URL=redis://${{ secrets.DEPLOY_HOST_252 }}:6379"
-            echo "AGENT_POOL_URL=http://localhost:3100"
+            echo "AGENT_POOL_URL=http://agent:3100"
           } > .env.251
 
           # .env.252 — data server: DB/Redis local, agent pool on 251
@@ -193,28 +206,6 @@ jobs:
           source: "docker-compose.252.yml"
           target: "~/cuneim/"
 
-      - name: Copy app prisma files to 252
-        if: env.BUILD_APP == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER_252 }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "user-platform/prisma/"
-          target: "~/cuneim/"
-          strip_components: 1
-
-      - name: Copy admin prisma files to 252
-        if: env.BUILD_ADMIN == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST_252 }}
-          username: ${{ secrets.DEPLOY_USER_252 }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "admin-platform/api/prisma/"
-          target: "~/cuneim/"
-          strip_components: 1
-
       - name: Copy .env.252 to 252
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -234,11 +225,14 @@ jobs:
           GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
           GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          BUILD_APP: ${{ env.BUILD_APP }}
+          BUILD_AGENT: ${{ env.BUILD_AGENT }}
+          BUILD_ADMIN: ${{ env.BUILD_ADMIN }}
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
           username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
-          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN
           script: |
             set -e
 
@@ -246,42 +240,81 @@ jobs:
             mkdir -p ~/cuneim
             mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
 
+            # Preserve tags for services that were not selected in this deployment.
+            OLD_APP_TAG=$(grep '^APP_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            OLD_AGENT_TAG=$(grep '^AGENT_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            OLD_ADMIN_TAG=$(grep '^ADMIN_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            : "${OLD_APP_TAG:=latest}"
+            : "${OLD_AGENT_TAG:=latest}"
+            : "${OLD_ADMIN_TAG:=latest}"
+
             # Activate machine-specific files
             cp ~/cuneim/docker-compose.252.yml ~/cuneim/docker-compose.yml
             mv ~/cuneim/.env.252 ~/cuneim/.env
+
+            if [ "$BUILD_APP" = "true" ]; then echo "APP_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "APP_IMAGE_TAG=$OLD_APP_TAG" >> ~/cuneim/.env; fi
+            if [ "$BUILD_AGENT" = "true" ]; then echo "AGENT_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "AGENT_IMAGE_TAG=$OLD_AGENT_TAG" >> ~/cuneim/.env; fi
+            if [ "$BUILD_ADMIN" = "true" ]; then echo "ADMIN_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "ADMIN_IMAGE_TAG=$OLD_ADMIN_TAG" >> ~/cuneim/.env; fi
 
             cd ~/cuneim
 
             # Login to GHCR to pull private images
             echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
-            # Pull images
-            docker compose pull
-
             # Start data layer first
+            docker compose pull postgres redis
             docker compose up -d postgres redis
 
             # Wait for postgres to be healthy
             echo "Waiting for postgres to be healthy..."
+            POSTGRES_READY=false
             for i in $(seq 1 30); do
               if docker compose exec -T postgres pg_isready -U postgres 2>/dev/null; then
                 echo "Postgres is ready"
+                POSTGRES_READY=true
                 break
               fi
               echo "Waiting... ($i/30)"
               sleep 2
             done
+            if [ "$POSTGRES_READY" != "true" ]; then
+              echo "Postgres did not become ready within 60 seconds" >&2
+              docker compose logs --tail=100 postgres >&2
+              exit 1
+            fi
 
-            # Start app layer (admin + app)
-            docker compose up -d admin app-0 app-1 app-2 app-3 app-4 app-5
+            # Migrate before replacing running application containers. Migration
+            # failures are deployment failures; never publish a false success.
+            if [ "$BUILD_APP" = "true" ]; then
+              docker compose pull app-0
+              docker compose run --rm --no-deps --user root app-0 npx prisma migrate deploy
+            fi
+            if [ "$BUILD_ADMIN" = "true" ]; then
+              docker compose pull admin
+              docker compose run --rm --no-deps admin npx prisma migrate deploy
+              if [ ! -f ~/cuneim/.seed_done ]; then
+                docker compose run --rm --no-deps admin node prisma/seed.js
+                touch ~/cuneim/.seed_done
+              fi
+            fi
 
-            # Run database migrations
-            docker compose exec -T --user root app-0 npx prisma migrate deploy || true
-            docker compose exec -T admin npx prisma migrate deploy || true
-
-            # Admin seed (first deploy only)
-            if [ ! -f ~/cuneim/.seed_done ]; then
-              docker compose exec -T admin node prisma/seed.js || true; touch ~/cuneim/.seed_done
+            if [ "$BUILD_APP" = "true" ]; then
+              docker compose up -d --remove-orphans app-0 app-1
+              for port in 3000 3001; do
+                for i in $(seq 1 30); do
+                  if curl -fsS "http://localhost:${port}/api/health" >/dev/null; then break; fi
+                  if [ "$i" = "30" ]; then echo "App on port ${port} failed its health check" >&2; exit 1; fi
+                  sleep 2
+                done
+              done
+            fi
+            if [ "$BUILD_ADMIN" = "true" ]; then
+              docker compose up -d admin
+              for i in $(seq 1 30); do
+                if curl -fsS http://localhost:3006/api >/dev/null; then break; fi
+                if [ "$i" = "30" ]; then echo "Admin failed its health check" >&2; exit 1; fi
+                sleep 2
+              done
             fi
 
       # Dual Step 3: SCP to 251 (app server)
@@ -322,11 +355,14 @@ jobs:
           GHCR_IMAGE_AGENT: ${{ env.AGENT_IMAGE_NAME }}
           GHCR_IMAGE_ADMIN: ${{ env.ADMIN_IMAGE_NAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          BUILD_APP: ${{ env.BUILD_APP }}
+          BUILD_AGENT: ${{ env.BUILD_AGENT }}
+          BUILD_ADMIN: ${{ env.BUILD_ADMIN }}
         with:
           host: ${{ secrets.DEPLOY_HOST_251 }}
           username: ${{ secrets.DEPLOY_USER_251 }}
           key: ${{ secrets.SSH_KEY }}
-          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN
           script: |
             set -e
 
@@ -334,25 +370,54 @@ jobs:
             mkdir -p ~/cuneim
             mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
 
+            # Preserve tags for services that were not selected in this deployment.
+            OLD_APP_TAG=$(grep '^APP_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            OLD_AGENT_TAG=$(grep '^AGENT_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            OLD_ADMIN_TAG=$(grep '^ADMIN_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)
+            : "${OLD_APP_TAG:=latest}"
+            : "${OLD_AGENT_TAG:=latest}"
+            : "${OLD_ADMIN_TAG:=latest}"
+
             # Activate machine-specific files
             cp ~/cuneim/docker-compose.251.yml ~/cuneim/docker-compose.yml
             mv ~/cuneim/.env.251 ~/cuneim/.env
+
+            if [ "$BUILD_APP" = "true" ]; then echo "APP_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "APP_IMAGE_TAG=$OLD_APP_TAG" >> ~/cuneim/.env; fi
+            if [ "$BUILD_AGENT" = "true" ]; then echo "AGENT_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "AGENT_IMAGE_TAG=$OLD_AGENT_TAG" >> ~/cuneim/.env; fi
+            if [ "$BUILD_ADMIN" = "true" ]; then echo "ADMIN_IMAGE_TAG=$IMAGE_TAG" >> ~/cuneim/.env; else echo "ADMIN_IMAGE_TAG=$OLD_ADMIN_TAG" >> ~/cuneim/.env; fi
 
             cd ~/cuneim
 
             # Login to GHCR to pull private images
             echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
-            # Pull images
-            docker compose pull
+            if [ "$BUILD_AGENT" = "true" ]; then
+              docker compose pull agent
+              docker compose up -d agent
+              for i in $(seq 1 30); do
+                if curl -fsS http://localhost:3100/health >/dev/null; then break; fi
+                if [ "$i" = "30" ]; then echo "Agent failed its health check" >&2; exit 1; fi
+                sleep 2
+              done
+            fi
+            if [ "$BUILD_APP" = "true" ]; then
+              docker compose pull app-0
+              docker compose up -d --remove-orphans app-0 app-1 app-2 app-3 app-4 app-5 app-6 app-7
+              for port in 3000 3001 3002 3003 3004 3005 3006 3007; do
+                for i in $(seq 1 30); do
+                  if curl -fsS "http://localhost:${port}/api/health" >/dev/null; then break; fi
+                  if [ "$i" = "30" ]; then echo "App on port ${port} failed its health check" >&2; exit 1; fi
+                  sleep 2
+                done
+              done
+            fi
 
-            # Start app layer (agent + app)
-            docker compose up -d agent app-0 app-1 app-2 app-3 app-4 app-5 app-6 app-7 app-8 app-9
-
-            # Deploy nginx config (with placeholder substitution)
+            # Validate and atomically recreate the containerized nginx. The host
+            # nginx service is intentionally not part of this architecture.
             sed -i 's/\${APP_252_HOST}/'"${{ secrets.DEPLOY_HOST_252 }}"'/g' ~/cuneim/nginx/*.conf
-            sudo cp ~/cuneim/nginx/*.conf /etc/nginx/conf.d/
-            sudo nginx -t && sudo systemctl reload nginx || true
+            docker compose pull nginx
+            docker compose run --rm --no-deps nginx nginx -t
+            docker compose up -d --force-recreate nginx
 
   notify:
     if: always()
