@@ -5,7 +5,7 @@
 | Host | Services | Default resource ceiling |
 | --- | --- | --- |
 | 251 | Nginx, Agent, 8 User App instances | 14.5 CPU, 20.5 GiB |
-| 252 | PostgreSQL, Redis, Admin, 2 User App instances | 14.5 CPU, 50 GiB |
+| 252 | PostgreSQL, Redis, Agent, Admin, 2 User App instances | 15.5 CPU, 51 GiB |
 
 The defaults target at least 16 vCPU / 32 GiB on 251 and 16 vCPU / 64 GiB on
 252. Limits are ceilings rather than reservations. Keep at least 20% of each
@@ -13,11 +13,13 @@ host's memory free for the kernel, Docker, filesystem cache, and deployment
 overlap. If the actual hosts are smaller, lower the repository variables before
 deploying.
 
-251 is compute-oriented. The Agent publishes host port 3100 to its actual
-container port 3000; the prebuilt binary and its Dockerfile currently disagree
-about this port, so deployment follows the verified runtime behavior. 252 is
-data-oriented: PostgreSQL receives 40 GiB and
-8 CPUs by default, while only two User App instances run beside the data layer.
+251 is compute-oriented. Each host now runs one local Agent and publishes host
+port 3100 to its actual container port 3000; apps use `http://agent:3000` on
+their local Docker network, avoiding a cross-host Agent dependency. The
+prebuilt binary and its Dockerfile currently disagree about this port, so
+deployment follows the verified runtime behavior. 252 remains data-oriented:
+PostgreSQL receives 38 GiB and 7.5 CPUs by default, while only two User App
+instances and the second Agent run beside the data layer.
 
 ## Repository variables
 
@@ -30,10 +32,12 @@ defaults without changing Compose files:
 | `DUAL_APP_CPU_LIMIT` | `1.50` |
 | `DUAL_AGENT_MEM_LIMIT` | `4g` |
 | `DUAL_AGENT_CPU_LIMIT` | `2.00` |
+| `DUAL_AGENT_252_MEM_LIMIT` | `3g` |
+| `DUAL_AGENT_252_CPU_LIMIT` | `1.50` |
 | `DUAL_NGINX_MEM_LIMIT` | `512m` |
 | `DUAL_NGINX_CPU_LIMIT` | `0.50` |
-| `DUAL_POSTGRES_MEM_LIMIT` | `40g` |
-| `DUAL_POSTGRES_CPU_LIMIT` | `8.00` |
+| `DUAL_POSTGRES_MEM_LIMIT` | `38g` |
+| `DUAL_POSTGRES_CPU_LIMIT` | `7.50` |
 | `DUAL_POSTGRES_SHARED_BUFFERS` | `10GB` |
 | `DUAL_POSTGRES_EFFECTIVE_CACHE_SIZE` | `30GB` |
 | `DUAL_POSTGRES_MAINTENANCE_WORK_MEM` | `2GB` |
@@ -48,7 +52,7 @@ defaults without changing Compose files:
 ## Deployment behavior
 
 - `app` deploys to both 251 and 252, then refreshes the 251 ingress.
-- `agent` deploys only to 251.
+- `agent` deploys to both 252 and 251; each host's apps use its local Agent.
 - `admin` deploys only to 252.
 - Combined selections use the union of those host targets.
 - 252 data services start and pass readiness checks first.

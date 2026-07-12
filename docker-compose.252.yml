@@ -37,8 +37,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    mem_limit: ${POSTGRES_MEM_LIMIT:-40g}
-    cpus: ${POSTGRES_CPU_LIMIT:-8.00}
+    mem_limit: ${POSTGRES_MEM_LIMIT:-38g}
+    cpus: ${POSTGRES_CPU_LIMIT:-7.50}
     networks:
       - app_network
 
@@ -52,6 +52,27 @@ services:
     restart: unless-stopped
     mem_limit: ${REDIS_MEM_LIMIT:-4g}
     cpus: ${REDIS_CPU_LIMIT:-2.00}
+    networks:
+      - app_network
+
+  agent:
+    image: ghcr.io/moocherci/agent:${AGENT_IMAGE_TAG:-latest}
+    ports:
+      - "3100:3000"
+    volumes:
+      - agent_data:/app/data
+      - shared-logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+    mem_limit: ${AGENT_252_MEM_LIMIT:-3g}
+    cpus: ${AGENT_252_CPU_LIMIT:-1.50}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - app_network
 
@@ -117,6 +138,7 @@ services:
 
 volumes:
   shared-logs:
+  agent_data:
   pgdata:
   redis_data:
 

@@ -175,10 +175,12 @@ jobs:
           APP_CPU_LIMIT=${{ vars.DUAL_APP_CPU_LIMIT || '1.50' }}
           AGENT_MEM_LIMIT=${{ vars.DUAL_AGENT_MEM_LIMIT || '4g' }}
           AGENT_CPU_LIMIT=${{ vars.DUAL_AGENT_CPU_LIMIT || '2.00' }}
+          AGENT_252_MEM_LIMIT=${{ vars.DUAL_AGENT_252_MEM_LIMIT || '3g' }}
+          AGENT_252_CPU_LIMIT=${{ vars.DUAL_AGENT_252_CPU_LIMIT || '1.50' }}
           NGINX_MEM_LIMIT=${{ vars.DUAL_NGINX_MEM_LIMIT || '512m' }}
           NGINX_CPU_LIMIT=${{ vars.DUAL_NGINX_CPU_LIMIT || '0.50' }}
-          POSTGRES_MEM_LIMIT=${{ vars.DUAL_POSTGRES_MEM_LIMIT || '40g' }}
-          POSTGRES_CPU_LIMIT=${{ vars.DUAL_POSTGRES_CPU_LIMIT || '8.00' }}
+          POSTGRES_MEM_LIMIT=${{ vars.DUAL_POSTGRES_MEM_LIMIT || '38g' }}
+          POSTGRES_CPU_LIMIT=${{ vars.DUAL_POSTGRES_CPU_LIMIT || '7.50' }}
           POSTGRES_SHARED_BUFFERS=${{ vars.DUAL_POSTGRES_SHARED_BUFFERS || '10GB' }}
           POSTGRES_EFFECTIVE_CACHE_SIZE=${{ vars.DUAL_POSTGRES_EFFECTIVE_CACHE_SIZE || '30GB' }}
           POSTGRES_MAINTENANCE_WORK_MEM=${{ vars.DUAL_POSTGRES_MAINTENANCE_WORK_MEM || '2GB' }}
@@ -197,18 +199,18 @@ jobs:
             echo "AGENT_POOL_URL=http://agent:3000"
           } > .env.251
 
-          # .env.252 — data server: DB/Redis local, agent pool on 251
+          # .env.252 — data server: DB/Redis and agent pool local
           {
             echo "$ENV_CONTENT"
             echo "$NON_SECRET"
             echo "DATABASE_URL=postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/cuneim"
             echo "REDIS_URL=redis://redis:6379"
-            echo "AGENT_POOL_URL=http://${{ secrets.DEPLOY_HOST_251 }}:3100"
+            echo "AGENT_POOL_URL=http://agent:3000"
           } > .env.252
 
       # Dual Step 1: SCP to 252 (data server)
       - name: Copy compose file to 252
-        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
@@ -218,7 +220,7 @@ jobs:
           target: "~/cuneim/"
 
       - name: Copy .env.252 to 252
-        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
@@ -227,9 +229,9 @@ jobs:
           source: ".env.252"
           target: "~/cuneim/"
 
-      # Dual Step 2: SSH deploy to 252 (data server — postgres, redis, admin, app)
+      # Dual Step 2: SSH deploy to 252 (data server — postgres, redis, agent, admin, app)
       - name: Deploy to 252 (data server)
-        if: env.BUILD_APP == 'true' || env.BUILD_ADMIN == 'true'
+        if: env.BUILD_APP == 'true' || env.BUILD_AGENT == 'true' || env.BUILD_ADMIN == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -319,6 +321,21 @@ jobs:
               else
                 echo "Admin migration skipped: set DUAL_RUN_ADMIN_MIGRATIONS=true after migration histories are consolidated"
               fi
+            fi
+
+            if [ "$BUILD_AGENT" = "true" ]; then
+              docker compose pull agent
+              docker compose up -d agent
+              for i in $(seq 1 30); do
+                if curl -fsS http://localhost:3100/health >/dev/null; then break; fi
+                if [ "$i" = "30" ]; then
+                  echo "Agent failed its health check" >&2
+                  docker compose ps agent >&2
+                  docker compose logs --tail=200 agent >&2
+                  exit 1
+                fi
+                sleep 2
+              done
             fi
 
             if [ "$BUILD_APP" = "true" ]; then
