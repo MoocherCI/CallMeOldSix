@@ -169,6 +169,7 @@ jobs:
           LOG_DIR=/app/logs
           LOG_MAX_SIZE=${{ vars.DUAL_AGENT_LOG_MAX_SIZE || '2GB' }}
           LOG_MAX_FILES=${{ vars.DUAL_AGENT_LOG_MAX_FILES || '10' }}
+          RUN_ADMIN_MIGRATIONS=${{ vars.DUAL_RUN_ADMIN_MIGRATIONS || 'false' }}
           APP_MEM_LIMIT=${{ vars.DUAL_APP_MEM_LIMIT || '2g' }}
           APP_CPU_LIMIT=${{ vars.DUAL_APP_CPU_LIMIT || '1.50' }}
           AGENT_MEM_LIMIT=${{ vars.DUAL_AGENT_MEM_LIMIT || '4g' }}
@@ -239,11 +240,12 @@ jobs:
           BUILD_APP: ${{ env.BUILD_APP }}
           BUILD_AGENT: ${{ env.BUILD_AGENT }}
           BUILD_ADMIN: ${{ env.BUILD_ADMIN }}
+          RUN_ADMIN_MIGRATIONS: ${{ vars.DUAL_RUN_ADMIN_MIGRATIONS || 'false' }}
         with:
           host: ${{ secrets.DEPLOY_HOST_252 }}
           username: ${{ secrets.DEPLOY_USER_252 }}
           key: ${{ secrets.SSH_KEY }}
-          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN
+          envs: GHCR_PAT,GHCR_USERNAME,GHCR_IMAGE,GHCR_IMAGE_AGENT,GHCR_IMAGE_ADMIN,IMAGE_TAG,BUILD_APP,BUILD_AGENT,BUILD_ADMIN,RUN_ADMIN_MIGRATIONS
           script: |
             set -e
 
@@ -302,10 +304,14 @@ jobs:
             fi
             if [ "$BUILD_ADMIN" = "true" ]; then
               docker compose pull admin
-              docker compose run --rm --no-deps admin npx prisma migrate deploy
-              if [ ! -f ~/cuneim/.seed_done ]; then
-                docker compose run --rm --no-deps admin node prisma/seed.js
-                touch ~/cuneim/.seed_done
+              if [ "$RUN_ADMIN_MIGRATIONS" = "true" ]; then
+                docker compose run --rm --no-deps admin npx prisma migrate deploy
+                if [ ! -f ~/cuneim/.admin_seed_done_v2 ]; then
+                  docker compose run --rm --no-deps admin node prisma/seed.js
+                  touch ~/cuneim/.admin_seed_done_v2
+                fi
+              else
+                echo "Admin migration skipped: set DUAL_RUN_ADMIN_MIGRATIONS=true after migration histories are consolidated"
               fi
             fi
 
@@ -314,7 +320,12 @@ jobs:
               for port in 3000 3001; do
                 for i in $(seq 1 30); do
                   if curl -fsS "http://localhost:${port}/api/health" >/dev/null; then break; fi
-                  if [ "$i" = "30" ]; then echo "App on port ${port} failed its health check" >&2; exit 1; fi
+                if [ "$i" = "30" ]; then
+                  echo "App on port ${port} failed its health check" >&2
+                  docker compose ps >&2
+                  docker compose logs --tail=100 app-0 app-1 >&2
+                  exit 1
+                fi
                   sleep 2
                 done
               done
@@ -323,7 +334,12 @@ jobs:
               docker compose up -d admin
               for i in $(seq 1 30); do
                 if curl -fsS http://localhost:3006/api >/dev/null; then break; fi
-                if [ "$i" = "30" ]; then echo "Admin failed its health check" >&2; exit 1; fi
+                if [ "$i" = "30" ]; then
+                  echo "Admin failed its health check" >&2
+                  docker compose ps admin >&2
+                  docker compose logs --tail=200 admin >&2
+                  exit 1
+                fi
                 sleep 2
               done
             fi
@@ -426,7 +442,12 @@ jobs:
               for port in 3000 3001 3002 3003 3004 3005 3006 3007; do
                 for i in $(seq 1 30); do
                   if curl -fsS "http://localhost:${port}/api/health" >/dev/null; then break; fi
-                  if [ "$i" = "30" ]; then echo "App on port ${port} failed its health check" >&2; exit 1; fi
+                  if [ "$i" = "30" ]; then
+                    echo "App on port ${port} failed its health check" >&2
+                    docker compose ps >&2
+                    docker compose logs --tail=100 app-0 app-1 app-2 app-3 app-4 app-5 app-6 app-7 >&2
+                    exit 1
+                  fi
                   sleep 2
                 done
               done

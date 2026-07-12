@@ -42,6 +42,7 @@ defaults without changing Compose files:
 | `DUAL_REDIS_MAXMEMORY` | `3gb` |
 | `DUAL_ADMIN_MEM_LIMIT` | `2g` |
 | `DUAL_ADMIN_CPU_LIMIT` | `1.50` |
+| `DUAL_RUN_ADMIN_MIGRATIONS` | `false` |
 
 ## Deployment behavior
 
@@ -52,6 +53,9 @@ defaults without changing Compose files:
 - 252 data services start and pass readiness checks first.
 - Migrations run in one-off containers before application containers change.
 - A failed migration stops the deployment; it is never converted into success.
+- Admin image deployment is decoupled from the legacy Admin migration history.
+  `DUAL_RUN_ADMIN_MIGRATIONS` remains `false` until the overlapping User/Admin
+  Prisma histories and the failed 252 migration record are repaired.
 - Only selected service images are pulled and recreated. Unselected image tags
   are preserved.
 - Removed legacy replicas are cleaned with `--remove-orphans` during an app
