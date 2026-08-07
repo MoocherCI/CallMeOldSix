@@ -124,3 +124,23 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 **教训/建议**：
 1. 手动修改远程 compose 会被 CI 部署覆盖 —— 配置修复必须先进 `origin/main`（healthcheck 修复已在 main，下次部署自动正确）；
 2. 触发部署后应等待其完成再做数据库级操作（恢复演练等），避免撞部署窗口。
+
+## 10. P0 修复记录（2026-08-08）
+
+### 10.1 `/v1/*` 404（nginx 重写缺失）——已修复
+- 现象：`api/stream.cuneim.com/v1/*` 全部 404（Next.js HTML），客户端不可用
+- 根因：`/v1/* → /v1/proxy` 重写原由 Next.js middleware 负责，改为 nginx 负责；应用侧已上线（middleware 排除 `/v1/`），nginx 侧未上线
+- 修复：251 的 `nginx/api.cuneim.com.conf`、`stream.cuneim.com.conf` 加入 `location /v1/`（rewrite + X-Original-Path + proxy_buffering off + 86400 超时，未加 limit_req）
+- 验证：`POST /v1/chat/completions` → **401 application/json**（修复前 404 HTML）
+- 治本：本地模板已同步并推送（commit `937d71d`），下次部署不再回退
+
+### 10.2 Google OAuth 登录失败（active_sessions 缺列）——已修复
+- 现象：`/signin?error=oauth_failed` 404，Google 登录失败
+- 根因：OAuth 回调登录成功（`Existing user logged in via Google`）后 `activeSession.create()` 报
+  `column "client_type" does not exist` → 回调异常 → 重定向 `/signin?error=oauth_failed`（该页面不存在）
+- 根因溯源：新 app 镜像代码的 `active_sessions` 期望**旧结构**（`client_type`+`token_hash`），
+  而 252 库为 `session_token` 结构（迁移时误判代码用新结构，仅跳过数据、未对齐表结构）
+- 修复：`session.active_sessions` 对齐为代码期望结构（drop session_token 约束/列，补
+  `client_type text NOT NULL DEFAULT 'web'`、`token_hash text NOT NULL` + UNIQUE/索引），模拟插入通过
+- 全面排查：新旧环境所有共有表列级对比，**无其他缺失列**（仅 users 的 totp 列已在此前修复）
+- 注意：需用户重新测试 Google 登录确认；治本（Prisma migration 对齐代码期望 schema）待开发
