@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily cuneim PostgreSQL backup (252)
+
+[Service]
+Type=oneshot
+User=john
+ExecStart=/usr/local/sbin/backup-252.sh

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily cuneim backup timer (03:30 UTC)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+Unit=cuneim-backup.service
+
+[Install]
+WantedBy=timers.target
