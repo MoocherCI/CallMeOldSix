@@ -423,7 +423,7 @@ jobs:
 
             # Create deployment directories
             mkdir -p ~/cuneim
-            mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs
+            mkdir -p ~/cuneim/agent/data ~/cuneim/shared-logs ~/cuneim/downloads
 
             # Preserve tags for services that were not selected in this deployment.
             OLD_APP_TAG=$(grep '^APP_IMAGE_TAG=' ~/cuneim/.env 2>/dev/null | cut -d= -f2 || true)

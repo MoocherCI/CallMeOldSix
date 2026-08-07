@@ -6,6 +6,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
+      # 公开下载目录（d.cuneim.com）— 用脚本 rsync 到宿主 ~/cuneim/downloads 后自动生效
+      - ./downloads:/usr/share/nginx/html:ro
       - nginx_logs:/var/log/nginx
       - /etc/letsencrypt:/etc/letsencrypt:ro
     restart: unless-stopped
