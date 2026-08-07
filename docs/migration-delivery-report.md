@@ -93,7 +93,7 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 | 优先级 | 事项 | 状态 |
 | --- | --- | --- |
 | 🔴 高 | 端口收敛（5432/6379/3000-3007/3100 公网→私有网络，DOCKER-USER 链） | **✅ 已完成（2026-08-07）** |
-| 🟡 中 | 252 定期备份计划 + 恢复演练 | 待执行 |
+| 🟡 中 | 252 定期备份计划 + 恢复演练 | **✅ 恢复演练已完成（2026-08-07）**：临时库完整 pg_restore 验证，行数与生产库 100% 一致（users 135 / request_logs 8,496,511 / usage_records 7,825,602），FK 完整性通过；定期备份计划待配置 |
 | 🟡 中 | 第二 Origin 高可用（Cloudflare Origin Pool） | 待执行 |
 | 🟡 中 | usage_records 分区改造（与开发确认分区键） | 待确认 |
 | 🟡 中 | Prisma 迁移历史单一归属重构 | 待确认 |
@@ -106,4 +106,21 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 - `docs/data-migration-plan.md` —— 迁移方案与执行记录（已更新）
 - `docs/sync_sequences.sql` / `docs/check_sequences.sql` —— 序列工具脚本
 - `docs/migration-delivery-report.md` —— 本报告
-- git commits：`ce83f06`（配置+方案）、`f8b8235`（安全审计）
+- `scripts/lockdown-251.sh` / `lockdown-252.sh` + systemd unit —— 端口收敛（已启用）
+- git commits：`ce83f06`（配置+方案）、`f8b8235`（安全审计）、`ad35c52`（交付报告）、`2aed7fe`（收敛标记）、`6e14a9f`（收敛脚本）
+
+## 9. 部署事件记录（2026-08-07 14:00）
+
+推送 origin/main 后，一次 `workflow_dispatch`/tag 触发的 CI 部署（镜像 `next-v20260807134839`）使用了
+**旧 checkout**（早于 healthcheck 修复的 main），导致：
+
+- 远程 compose 被旧版覆盖，app 健康检查回退为 `localhost:3000`（旧镜像绑定容器 IP → unhealthy）；
+- 252/251 的 app 容器被 CI 用旧配置重建，先后出现 unhealthy；
+- 同期进行的备份恢复演练撞上部署窗口，postgres 容器被 CI 重建导致恢复中断（非备份问题）。
+
+**处理**：将修复版 compose（`$HOSTNAME` healthcheck）重新同步到远程并重建 app，全部恢复 healthy；
+恢复演练在部署完成后重做并完整通过。
+
+**教训/建议**：
+1. 手动修改远程 compose 会被 CI 部署覆盖 —— 配置修复必须先进 `origin/main`（healthcheck 修复已在 main，下次部署自动正确）；
+2. 触发部署后应等待其完成再做数据库级操作（恢复演练等），避免撞部署窗口。
