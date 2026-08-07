@@ -1,12 +1,26 @@
 # 剩余任务方案与交接说明
 
 > 日期：2026-08-07
-> 状态：迁移/切换/备份/安全收敛已完成；以下为剩余可选项的**方案、指引与交接说明**。
-> 需要执行时：2 项需用户确认（分区改造、停旧 postgres），2 项需用户/开发在对应平台操作（Origin、Prisma）。
+> 状态：迁移/切换/备份/安全收敛已完成；**分区改造已完成 4/6 张表**。
+> 剩余：2 项需用户/开发在对应平台操作（Origin、Prisma），2 项有明确结论（usage_daily/monthly 暂缓、旧 postgres 观察期后停用）。
 
 ---
 
-## 1. usage_records 分区改造（对齐分区管理器预期）
+## 1. usage_records 分区改造（✅ 已完成 2026-08-07）
+
+**已改造为按月 RANGE 分区**（对齐分区管理器）：
+
+| 表 | 状态 | 结果 |
+| --- | --- | --- |
+| usage.usage_records（782 万行） | ✅ 已分区 | 分区管理器自动创建未来分区（2026_10/11…），报错消除 |
+| usage.usage_logs（0 行） | ✅ 已分区 | 同上 |
+| log.audit_log（22 行） | ✅ 已分区 | 同上 |
+| log.request_logs（849 万行） | ✅ 已分区 | 同上（注意 user_id 为 **text** 类型） |
+| usage.usage_daily（1,837 行） | ⚠️ **暂缓** | 有 `UNIQUE(user_id, date, model)` 非分区键唯一约束；分区表要求唯一约束含分区键，改造会破坏 app 的 UPSERT（`ON CONFLICT`），**需要 app 代码配合**（改约束或改写入逻辑）后才可分区 |
+| usage.usage_monthly（373 行） | ⚠️ **暂缓** | 同上（`UNIQUE(user_id, year_month, model)`） |
+
+改造方式（可复用）：`scripts/partition-*-build.sql`（建 `_new` 分区表+迁移+索引）+ `switch`（短锁切换，锁窗口 <1s）。
+usage_daily/usage_monthly 数据量极小，普通表 + 已知告警（每 24h 一条，不阻塞功能）可长期接受。
 
 ### 背景（已从 app 编译代码调研确认）
 
@@ -21,41 +35,7 @@
 | usage.usage_daily | 季度 | `usage_daily_2026_q3` |
 | usage.usage_monthly | 年 | `usage_monthly_2026` |
 
-当前主表为普通堆表 → 分区管理器报 `"xxx" is not partitioned`（已知告警，功能不受影响）。
-改造后分区管理器将正常创建未来分区；同时便于按时间清理历史数据。
-
-### 改造方案（以 usage_records 782 万行为例，可不停机）
-
-```sql
--- ① 重命名现有表（业务写入窗口内停写，或接受短暂阻塞）
-ALTER TABLE usage.usage_records RENAME TO usage_records_old;
-
--- ② 创建分区主表（结构同旧表，含约束；外键/索引见实施时 \d+ 确认）
-CREATE TABLE usage.usage_records (
-    ... 同旧表列定义 ...,
-    CONSTRAINT usage_records_pkey PRIMARY KEY (id, created_at)
-) PARTITION BY RANGE (created_at);
-
--- ③ 为每个已存在的月份创建分区并灌入数据（按 created_at 月份分组循环）
-CREATE TABLE usage.usage_records_2026_08
-    PARTITION OF usage.usage_records
-    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
-INSERT INTO usage.usage_records_2026_08
-    SELECT ... FROM usage.usage_records_old WHERE created_at >= '2026-08-01' AND created_at < '2026-09-01';
-
--- ④ 主表建索引（PG 12+ 自动级联到分区）
-CREATE INDEX ... ON usage.usage_records (...);  -- 同旧表全部索引
-
--- ⑤ 校验行数（= 旧表 count）后
-DROP TABLE usage.usage_records_old;
-```
-
-要点：
-- 分区键列在实施时用 `\d+ usage.usage_records` 确认（应为 `created_at`）；
-- `usage_records_pkey` 需改为 `(id, created_at)` 复合主键（分区表主键必须含分区键）——**这是对主键的破坏性变更**，需确认 app 按 id 单列查询/外键引用不受影响；
-- usage_records 若存在指向 `main.users` 的外键，改造后需重建 FK（分区表 FK 支持，PG 12+）；
-- **风险高**：生产表结构变更 + 主键变更，建议低峰 + 先备份（已有 `cuneim_post_migration` dump + 每日定时备份）；
-- 实施前建议先在 restore_test 临时库演练一遍（用恢复演练的方式）。
+主键均由 `(id)` 改为 `(id, created_at)`（分区表主键必须含分区键）；已确认无入向外键引用受影响。
 
 ## 2. 第二 Origin / 高可用（Cloudflare 面板，需用户操作）
 
