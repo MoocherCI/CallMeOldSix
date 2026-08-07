@@ -198,9 +198,9 @@ docker exec ... psql -U postgres -d cuneim -tAc \
 | 3 | Stripe webhook 停机期事件丢失 | 低 | Stripe 有重试机制，恢复后自动补 |
 | 4 | Redis 缓存（session/token 缓存）冷启动 | 低 | 切换后清 252 Redis 一次，自动重建（✅ 已执行 FLUSHALL） |
 | 5 | `usage_records is not partitioned` 分区管理器报错 | 低（不阻塞） | 已知告警（启动与定时任务），782 万行普通表可正常服务；后续与开发确认分区改造 |
-| 6 | `INTERNAL_BASE_URL=http://app:3000` 在新环境无 `app` 服务名 | 待确认 | 迁移后 app 运行正常暂未发现影响；仍建议确认该变量用途 |
+| 6 | `INTERNAL_BASE_URL=http://app:3000` 在新环境无 `app` 服务名 | 已核实 | 新环境容器内 `getent hosts app` 解析失败（rc=2），但迁移后运行无故障、health/Stripe 对账正常，说明当前代码路径未使用；建议开发确认该变量用途后清理或改为可解析地址 |
 | 7 | admin migration 历史（重叠） | 中 | 已用"仅导数据 + 手动建 admin 表"规避；后续建议合并 Prisma 迁移历史为单一归属 |
-| 8 | 端口 3000-3007/3100/5432/6379 公网暴露 | 高（安全） | 切换后尽快用防火墙 / DOCKER-USER 链收紧到私有网络（**待办**） |
+| 8 | 端口 3000-3007/3100/5432/6379 公网暴露 | **高（已实证）** | 2026-08-07 实测：251 的 22/3000-3007/3100、252 的 22/3000/3006/**5432/6379** 均公网 TCP OPEN；两台 ufw inactive、无自定义 iptables 规则，全凭云安全组 → 需用防火墙 / DOCKER-USER 链收紧到私有网络（**待办，安全优先级最高**） |
 | 9 | 新环境无第二入口/高可用 | 中 | 按 dual-architecture 待办配置第二 Origin（**待办**） |
 | 10 | `session.active_sessions` 未迁移（275 条） | 低 | 新旧 schema 不兼容（旧 `token_hash`+`client_type` vs 新 `session_token`）；`refresh_tokens` 115 条已迁移保登录态，会话列表由用户下次登录重建 |
 
