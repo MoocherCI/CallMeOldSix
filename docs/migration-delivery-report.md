@@ -94,8 +94,8 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 | --- | --- | --- |
 | 🔴 高 | 端口收敛（5432/6379/3000-3007/3100 公网→私有网络，DOCKER-USER 链） | **✅ 已完成（2026-08-07）** |
 | 🟡 中 | 252 定期备份计划 + 恢复演练 | **✅ 已完成（2026-08-07）**：恢复演练完整通过（行数 100% 一致、FK 通过）；定期备份由 systemd timer `cuneim-backup.timer`（每天 03:30 UTC，保留 7 份，错过补跑）承担，脚本 `scripts/backup-252.sh` |
-| 🟡 中 | 第二 Origin 高可用（Cloudflare Origin Pool） | 待执行 |
-| 🟡 中 | usage_records 分区改造（与开发确认分区键） | 待确认 |
+| 🟡 中 | 第二 Origin 高可用（Cloudflare Origin Pool） | 配置清单已出（`docs/cloudflare-origin-pool.md`），需用户在 Cloudflare 面板执行 |
+| 4 | usage_records 分区改造 | **✅ 已完成 4/6 表（2026-08-07）**：usage_records/usage_logs/audit_log/request_logs 已按月分区，分区裁剪生效（Subplans Removed 8/9）、写入路由正常；usage_daily/usage_monthly 因唯一约束冲突暂缓（见 remaining-tasks.md §1） |
 | 🟡 中 | Prisma 迁移历史单一归属重构 | 待确认 |
 | 🟢 低 | `INTERNAL_BASE_URL=http://app:3000` 在新环境不可解析（当前无影响） | 待开发确认用途 |
 | 🟢 低 | /sitemap.xml 404（爬虫抓取失败，SEO 优化） | 可选 |
