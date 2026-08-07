@@ -93,7 +93,7 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 | 优先级 | 事项 | 状态 |
 | --- | --- | --- |
 | 🔴 高 | 端口收敛（5432/6379/3000-3007/3100 公网→私有网络，DOCKER-USER 链） | **✅ 已完成（2026-08-07）** |
-| 🟡 中 | 252 定期备份计划 + 恢复演练 | **✅ 恢复演练已完成（2026-08-07）**：临时库完整 pg_restore 验证，行数与生产库 100% 一致（users 135 / request_logs 8,496,511 / usage_records 7,825,602），FK 完整性通过；定期备份计划待配置 |
+| 🟡 中 | 252 定期备份计划 + 恢复演练 | **✅ 已完成（2026-08-07）**：恢复演练完整通过（行数 100% 一致、FK 通过）；定期备份由 systemd timer `cuneim-backup.timer`（每天 03:30 UTC，保留 7 份，错过补跑）承担，脚本 `scripts/backup-252.sh` |
 | 🟡 中 | 第二 Origin 高可用（Cloudflare Origin Pool） | 待执行 |
 | 🟡 中 | usage_records 分区改造（与开发确认分区键） | 待确认 |
 | 🟡 中 | Prisma 迁移历史单一归属重构 | 待确认 |
