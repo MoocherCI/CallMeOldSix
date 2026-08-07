@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply Docker-USER lockdown on data host (allow ingress host, block public service ports)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lockdown-252.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
