@@ -69,7 +69,12 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 | 251 公网 OPEN 端口 | 22 / 3000-3007 / 3100 |
 | 防火墙 | 两台 ufw **inactive**、无自定义 iptables 规则，全凭云安全组 |
 
-**结论**：252 的 postgres/redis 可被公网直连，为当前最高优先级安全敞口，待收敛。
+**结论**：252 的 postgres/redis 可被公网直连 —— **已收敛（2026-08-07）**：
+
+- 251 `DOCKER-USER`：公网到 3000-3007/3100 全部 DROP，仅保留 80/443（Cloudflare 回源）
+- 252 `DOCKER-USER`：放行 251 来源（跨主机 app→postgres/redis、nginx→app/admin），其余来源到 3000/3001/3006/3100/5432/6379 全部 DROP
+- 持久化：`docker-user-lockdown-251/252.service`（systemd oneshot，docker 重启后自动重应用）
+- 验证：真实公网视角（旧环境机器）探测全部 closed，仅 251:80/443 OPEN；公网域名 10/10 仍 200，跨主机链路与 postgres 连接（22 个）无损
 
 ## 6. 备份与回滚
 
@@ -87,7 +92,7 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
 
 | 优先级 | 事项 | 状态 |
 | --- | --- | --- |
-| 🔴 高 | 端口收敛（5432/6379/3000-3007/3100 公网→私有网络，DOCKER-USER 链） | 待执行（方案已备） |
+| 🔴 高 | 端口收敛（5432/6379/3000-3007/3100 公网→私有网络，DOCKER-USER 链） | **✅ 已完成（2026-08-07）** |
 | 🟡 中 | 252 定期备份计划 + 恢复演练 | 待执行 |
 | 🟡 中 | 第二 Origin 高可用（Cloudflare Origin Pool） | 待执行 |
 | 🟡 中 | usage_records 分区改造（与开发确认分区键） | 待确认 |
