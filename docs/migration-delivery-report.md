@@ -144,3 +144,10 @@ stream.cuneim.com / next.cuneim.com / next-api.cuneim.com / next-admin.cuneim.co
   `client_type text NOT NULL DEFAULT 'web'`、`token_hash text NOT NULL` + UNIQUE/索引），模拟插入通过
 - 全面排查：新旧环境所有共有表列级对比，**无其他缺失列**（仅 users 的 totp 列已在此前修复）
 - 注意：需用户重新测试 Google 登录确认；治本（Prisma migration 对齐代码期望 schema）待开发
+- **已确认恢复（2026-08-09）**：日志出现 `Existing user logged in via Google`（userId 118）且无 callback 错误
+
+### 10.3 `/v1/*` 大请求体 413（client_max_body_size）——已修复
+- 现象：>1MiB 的 `/v1/chat/completions` 等请求被 nginx 返回 413（默认 1MiB 限制）
+- 修复：`nginx/api.cuneim.com.conf`、`stream.cuneim.com.conf` 443 server 块加 `client_max_body_size 50m;`（与仓库/后端 50MiB 边界一致）
+- 验证：1.2MiB body → **401 application/json**（修复前 413）；`nginx -T` 显示 `client_max_body_size 50m;`
+- 治本：本地模板已同步并推送（commit `53e9b03`），容器重建后仍在
